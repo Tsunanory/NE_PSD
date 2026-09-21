@@ -1,0 +1,25 @@
+{
+  "name": "@ne-psd/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run typecheck"
+  },
+  "dependencies": {
+    "@ne-psd/contracts": "0.1.0",
+    "better-sqlite3": "12.9.0"
+  }
+}

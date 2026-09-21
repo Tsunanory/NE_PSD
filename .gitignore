@@ -1,0 +1,35 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local runtime and packaged output.
+/runtime/
+/userData/
+/outputs/
+/packaged/
+/inputs/
+/assets/
+/tmp/
+/.worktrees/
+.superpowers/sdd/
+
+# PSD/PSB and image copies are job-owned assets, not source fixtures.
+*.psd
+*.psb
+
+# Machine-local credentials and endpoint state.
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+**/runtime-secrets.*
+**/endpoint-credentials.*
+docs/photoshop/live-machine.json
+
+# Host metadata.
+.DS_Store
+*.log
+__pycache__/
+*.pyc

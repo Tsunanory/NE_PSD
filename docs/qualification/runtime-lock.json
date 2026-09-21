@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-21T22:02:57Z",
+  "platform": {
+    "os": "darwin",
+    "version": "26.6.1",
+    "cpu": "arm64",
+    "status": "observed"
+  },
+  "node": {
+    "version": "22.23.2",
+    "source": "https://nodejs.org/dist/index.json",
+    "status": "selected-not-installed",
+    "observedVersion": "25.9.0",
+    "officialChecksums": {
+      "darwin-arm64-tar-gz": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
+      "darwin-arm64-tar-xz": "5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1",
+      "win-x64-zip": "1177b4137ba5adaa56354ae40f1080c7450e8ae09cecb47da459d1c52ac99f97"
+    }
+  },
+  "npm": {
+    "version": "11.12.1",
+    "status": "observed"
+  },
+  "electron": {
+    "package": "electron",
+    "version": "41.0.0",
+    "integrity": "sha512-U7QueSj1cFj9QM0Qamgh/MK08662FVK555iMfapqU7mcAmIm4A8bZuZptpjMXrT4JNAMGjgWu9sOeO1+RPCJNw==",
+    "license": "MIT",
+    "status": "pinned-electron-rebuild-proven",
+    "moduleAbi": "145",
+    "smokeTest": {
+      "value": 41,
+      "host": "darwin-arm64",
+      "electronRuntime": "41.0.0",
+      "embeddedNode": "24.14.0"
+    }
+  },
+  "typescript": {
+    "package": "typescript",
+    "version": "7.0.2",
+    "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
+    "license": "Apache-2.0"
+  },
+  "mcpSdk": {
+    "package": "@modelcontextprotocol/sdk",
+    "version": "1.30.0",
+    "commit": "2d889f2b329e46680ec9bdd565de4616c497825a",
+    "integrity": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==",
+    "license": "MIT"
+  },
+  "photoshopMcp": {
+    "package": "@alisaitteke/photoshop-mcp",
+    "version": "1.7.19",
+    "commit": "143b69dba18dc5992c56a5d489b6efbfed173e1a",
+    "integrity": "sha512-UEsZLBCuSh0TqVpKul6n2BVu3DW/G1gJ6oD8LwLAzBL7eaLTwtay3oSPDf/YHCL8ypvzXQlJEzwsaveCzEzXuA==",
+    "license": "MIT"
+  },
+  "sharp": {
+    "package": "sharp",
+    "version": "0.35.4",
+    "integrity": "sha512-n++8XWcj+jCOr2IOl7h8LbKnGBDY4aPbmprMONBNFdn0ImXqpGVv5zliDs0V9HbmbCQLpbuo2ej9rAoOQTvMDA==",
+    "license": "Apache-2.0"
+  },
+  "sqlite": {
+    "package": "better-sqlite3",
+    "version": "12.9.0",
+    "integrity": "sha512-wqUv4Gm3toFpHDQmaKD4QhZm3g1DjUBI0yzS4UBl6lElUmXFYdTQmmEDpAFa5o8FiFiymURypEnfVHzILKaxqQ==",
+    "license": "MIT",
+    "nodeAbi": {
+      "status": "host-node-smoke-passed",
+      "hostVersion": "25.9.0",
+      "hostModuleAbi": "141",
+      "smokeTest": {
+        "value": 42,
+        "database": ":memory:"
+      },
+      "selectedNode22Status": "not-run-on-host"
+    },
+    "electronAbi": {
+      "runtime": "electron",
+      "target": "41.0.0",
+      "status": "proven-on-darwin-arm64-with-host-libcxx"
+    }
+  },
+  "llamaCpp": {
+    "status": "unqualified",
+    "version": null,
+    "source": null,
+    "reason": "No exact local Qwen artifact or llama.cpp runtime was supplied or qualified during foundation.",
+    "releaseGate": "Qualify an exact local model artifact, runtime version, and chat template before production review."
+  },
+  "verificationEvidence": [
+    "docs/qualification/dependency-evidence.md",
+    "npm ci output recorded after installation",
+    "npm run build output recorded after installation",
+    "npm run check output recorded after installation",
+    "npm run test:contracts output recorded after installation"
+  ]
+}

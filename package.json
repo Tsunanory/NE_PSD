@@ -1,0 +1,44 @@
+{
+  "name": "ne-psd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.23.2",
+    "npm": "11.12.1"
+  },
+  "packageManager": "npm@11.12.1",
+  "workspaces": [
+    "packages/contracts",
+    "packages/core",
+    "packages/photoshop",
+    "packages/intelligence",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "build": "npm run build:contracts && npm run build:rest",
+    "build:contracts": "npm run build --workspace=@ne-psd/contracts",
+    "build:rest": "npm run build --workspace=@ne-psd/core && npm run build --workspace=@ne-psd/photoshop && npm run build --workspace=@ne-psd/intelligence && npm run build --workspace=@ne-psd/desktop",
+    "build:workspaces": "npm run build --workspaces --if-present",
+    "check": "npm run check --workspaces --if-present",
+    "test:contracts": "vitest run --config tests/contracts/vitest.config.ts",
+    "test:core": "vitest run --config tests/core/vitest.config.ts",
+    "test:photoshop": "vitest run --config tests/photoshop/vitest.config.ts",
+    "test:intelligence": "vitest run --config tests/intelligence/vitest.config.ts",
+    "test:desktop": "vitest run --config tests/desktop/vitest.config.ts",
+    "test:integration": "vitest run --config tests/integration/vitest.config.ts",
+    "test:e2e:desktop": "playwright test --config tests/desktop/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.2",
+    "electron": "41.0.0",
+    "electron-builder": "26.0.12",
+    "playwright": "1.63.0",
+    "typescript": "7.0.2",
+    "vite": "7.3.6",
+    "vitest": "5.0.1"
+  }
+}

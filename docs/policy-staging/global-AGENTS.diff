@@ -1,0 +1,10 @@
+--- global-AGENTS.original.md
++++ global-AGENTS.md
+@@ -13,3 +13,7 @@
+ Say it explicitly if you doubt something is certain.
+ 
+ No warm up paragraphs. Skip "There are several ways to look at this". Start with the most useful thing you can say.
++
++## Interactive execution routing (owner decision, 2026-09-22)
++
++The main interactive session runs on `gpt-5.6-sol` and acts only as coordinator. Sol must not take over implementation or troubleshooting on worker failure. The owner must select Sol in actual session settings; verify exposed metadata when available without claiming an unverified selection. Delegate one bounded task at a time, including implementation, code, tests, debugging, bulk edits and integration, to an explicitly pinned `gpt-5.6-luna` worker without inheriting the full conversation. The Luna child executes its assigned task directly and must not recursively delegate merely because it reads this rule. Allow at most one correction retry, then hand off the blocker. If Luna is unavailable, mismatched or its selected model metadata cannot be confirmed where exposed, stop dependent work and report the blocker. This instruction does not switch the main model or cap tokens. Invoke ponytail (full) before coding, design or code-review work; preserve all requested functionality and safety.
