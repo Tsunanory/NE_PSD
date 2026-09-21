@@ -14,9 +14,19 @@ coverage/
 /.worktrees/
 .superpowers/sdd/
 
-# PSD/PSB and image copies are job-owned assets, not source fixtures.
-*.psd
-*.psb
+# Job-owned PSD/PSB, image payloads and model weights. Test fixtures remain trackable.
+/runtime/job-owned/**/*.psd
+/runtime/job-owned/**/*.psb
+/runtime/job-owned/images/**
+/runtime/job-owned/model-weights/**
+/outputs/job-owned/**/*.psd
+/outputs/job-owned/**/*.psb
+/outputs/job-owned/images/**
+/outputs/job-owned/model-weights/**
+!tests/fixtures/
+!tests/fixtures/**
+!tests/fixtures/**/*.psd
+!tests/fixtures/**/*.psb
 
 # Machine-local credentials and endpoint state.
 .env

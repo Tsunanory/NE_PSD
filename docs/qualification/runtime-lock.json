@@ -10,8 +10,11 @@
   "node": {
     "version": "22.23.2",
     "source": "https://nodejs.org/dist/index.json",
-    "status": "selected-not-installed",
-    "observedVersion": "25.9.0",
+    "status": "executed",
+    "observedVersion": "22.23.2",
+    "hostVersionBeforeSelection": "25.9.0",
+    "moduleAbi": "127",
+    "executionEvidence": "Selected Node 22.23.2 binary and bundled npm 10.9.8 were executed for lockfile, install and verification commands.",
     "officialChecksums": {
       "darwin-arm64-tar-gz": "61130f394c1630d211dd50aecc4353d379480f36d3ac913cd85dbba1aed585c6",
       "darwin-arm64-tar-xz": "5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1",
@@ -19,8 +22,8 @@
     }
   },
   "npm": {
-    "version": "11.12.1",
-    "status": "observed"
+    "version": "10.9.8",
+    "status": "executed-with-selected-node"
   },
   "electron": {
     "package": "electron",
@@ -68,19 +71,28 @@
     "integrity": "sha512-wqUv4Gm3toFpHDQmaKD4QhZm3g1DjUBI0yzS4UBl6lElUmXFYdTQmmEDpAFa5o8FiFiymURypEnfVHzILKaxqQ==",
     "license": "MIT",
     "nodeAbi": {
-      "status": "host-node-smoke-passed",
-      "hostVersion": "25.9.0",
-      "hostModuleAbi": "141",
+      "status": "selected-node22-smoke-passed",
+      "hostVersion": "22.23.2",
+      "hostModuleAbi": "127",
       "smokeTest": {
         "value": 42,
-        "database": ":memory:"
+        "database": ":memory:",
+        "node": "v22.23.2",
+        "moduleAbi": "127"
       },
-      "selectedNode22Status": "not-run-on-host"
+      "selectedNode22Status": "passed"
     },
     "electronAbi": {
       "runtime": "electron",
       "target": "41.0.0",
-      "status": "proven-on-darwin-arm64-with-host-libcxx"
+      "status": "proven-on-darwin-arm64-with-host-libcxx",
+      "smokeTest": {
+        "value": 41,
+        "electron": "41.0.0",
+        "embeddedNode": "24.14.0",
+        "moduleAbi": "145",
+        "host": "darwin-arm64"
+      }
     }
   },
   "llamaCpp": {
@@ -90,11 +102,28 @@
     "reason": "No exact local Qwen artifact or llama.cpp runtime was supplied or qualified during foundation.",
     "releaseGate": "Qualify an exact local model artifact, runtime version, and chat template before production review."
   },
+  "photoshop": {
+    "status": "unqualified",
+    "reason": "No Photoshop installation is available on this host; the pinned Photoshop MCP package cannot establish live PSD capability by itself.",
+    "releaseGate": "Run live template inspection, selector qualification, sentinel propagation, geometry, visibility and export checks on a job-owned Photoshop installation."
+  },
+  "windows": {
+    "status": "unqualified",
+    "reason": "No Windows 11 x64 host is available in this development environment.",
+    "releaseGate": "Build, install, upgrade, uninstall and run the Electron/native stack on Windows 11 x64, including the Photoshop and model acceptance gates."
+  },
   "verificationEvidence": [
     "docs/qualification/dependency-evidence.md",
+    "docs/qualification/npm-audit-evidence.json",
     "npm ci output recorded after installation",
     "npm run build output recorded after installation",
     "npm run check output recorded after installation",
-    "npm run test:contracts output recorded after installation"
+    "npm run test:contracts output recorded after installation",
+    "npm run test:core output recorded after installation",
+    "npm run test:photoshop output recorded after installation",
+    "npm run test:intelligence output recorded after installation",
+    "npm run test:desktop output recorded after installation",
+    "Node 22.23.2 better-sqlite3 in-memory smoke output",
+    "Electron 41.0.0 better-sqlite3 ABI 145 smoke output"
   ]
 }
