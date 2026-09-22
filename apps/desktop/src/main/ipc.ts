@@ -1,10 +1,4 @@
-import { ipcMain } from 'electron';
-import { validateRequest, type IpcChannel } from './ipc-schema.js';
-export function registerIpc(services: { jobs: { start(spec: unknown): Promise<unknown> } }): void {
-  ipcMain.handle('job.validate', (_event, payload) => validateRequest('job.validate', payload));
-  ipcMain.handle('job.start', async (_event, payload) => { const spec = validateRequest('job.start', payload); return services.jobs.start(spec); });
-}
-export function assertSender(senderFrame: { url: string }, mode: 'development' | 'production'): void {
-  if (!(mode === 'development' ? senderFrame.url.startsWith('http://localhost:') : senderFrame.url.startsWith('file:///app/'))) throw new Error('untrusted IPC sender');
-}
-export type { IpcChannel };
+import { ipcMain } from 'electron'; import { validateRequest, validateResponse, type IpcChannel } from './ipc-schema.js';
+type Jobs = { validate(spec: unknown): Promise<unknown>; start(spec: unknown): Promise<unknown>; pause(id:string):Promise<unknown>; resume(id:string):Promise<unknown>; cancel(id:string):Promise<unknown>; snapshot(id:string):Promise<unknown> };
+export function assertSender(frame:{url:string},mode:'development'|'production'):void { if(!(mode==='development'?/^http:\/\/localhost:\d+\/$/.test(frame.url):frame.url==='file:///app/index.html')) throw new Error('untrusted IPC sender'); }
+export function registerIpc(services:{jobs:Jobs},mode:'development'|'production'='production'):void { const register=(channel:IpcChannel,fn:(p:unknown)=>Promise<unknown>|unknown)=>ipcMain.handle(channel,(event,payload)=>{if(!event.senderFrame)throw new Error('missing sender'); assertSender(event.senderFrame,mode); const request=validateRequest(channel,payload); return Promise.resolve(fn(request)).then(validateResponse);}); register('job.validate',p=>services.jobs.validate((p as {spec:unknown}).spec)); register('job.start',p=>services.jobs.start((p as {spec:unknown}).spec)); register('job.pause',p=>services.jobs.pause((p as {jobId:string}).jobId)); register('job.resume',p=>services.jobs.resume((p as {jobId:string}).jobId)); register('job.cancel',p=>services.jobs.cancel((p as {jobId:string}).jobId)); register('job.snapshot',p=>services.jobs.snapshot((p as {jobId:string}).jobId)); }

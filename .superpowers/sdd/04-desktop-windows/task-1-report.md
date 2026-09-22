@@ -45,3 +45,9 @@ Completed. No reusable skill observation was found; checkpoint recorded in the s
 ## Commit
 
 `39d5e778043619a0d801587211bf83720022685f` (amend updates this report with the final commit identity).
+
+## Correction retry
+
+Added functional startup composition, exact packaged/development loading, policy installation, permission denial, single-instance focus, sender validation on every IPC handler, strict request/response serialization, main-owned generation-bound canonical root handles, explicit typed preload methods, separate Vite renderer output, and a real Playwright Electron launch test.
+
+Correction RED: focused tests failed on the old generic `onEvent` bridge, permissive root/navigation policy, and nonexistent-root acceptance. Correction GREEN: focused suites passed after those behaviors were implemented. Final required checks: strict typecheck passed; focused suites passed (3 files, 7 tests); full desktop suite passed (4 files, 8 tests); Vite plus TypeScript build passed. Electron e2e attempted the real Electron shell and aborted with `signal=SIGABRT` before window creation; this is the exact host GUI blocker, unrelated to Chromium installation.

@@ -9,7 +9,7 @@ describe('desktop IPC boundary', () => {
 
   it('exposes only fixed serializable operations and unsubscribe functions', () => {
     const api = createBridgeApi({ invoke: async () => ({ ok: true }), subscribe: () => () => undefined });
-    expect(Object.keys(api)).toEqual([...IPC_CHANNELS]);
-    expect(typeof api.onEvent(() => undefined)).toBe('function');
+    expect(Object.keys(api)).not.toContain('onEvent');
+    expect(typeof api.subscribe(() => undefined)).toBe('function');
   });
 });

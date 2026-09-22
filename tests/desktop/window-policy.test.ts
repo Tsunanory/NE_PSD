@@ -9,8 +9,12 @@ describe('desktop window policy', () => {
   });
 
   it('rejects stale and traversal root handles', () => {
-    expect(isAllowedRootHandle({ rootId: 'assets', relativePath: 'cat.png', roots: { assets: '/tmp/assets' } })).toBe(true);
+    expect(isAllowedRootHandle({ rootId: 'assets', relativePath: 'cat.png', roots: { assets: '/tmp/assets' } })).toBe(false);
     expect(isAllowedRootHandle({ rootId: 'assets', relativePath: '../secret', roots: { assets: '/tmp/assets' } })).toBe(false);
     expect(isAllowedRootHandle({ rootId: 'stale', relativePath: 'cat.png', roots: { assets: '/tmp/assets' } })).toBe(false);
+  });
+
+  it('requires an exact packaged origin', () => {
+    expect(isAllowedNavigation('file:///app/index.html.evil', 'production')).toBe(false);
   });
 });

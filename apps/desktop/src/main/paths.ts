@@ -1,6 +1,3 @@
-import { resolve, sep } from 'node:path';
-export function resolveRootPath(root: string, relativePath: string): string {
-  const path = resolve(root, relativePath);
-  if (path !== resolve(root) && !path.startsWith(`${resolve(root)}${sep}`)) throw new Error('path escapes root');
-  return path;
-}
+import { existsSync, lstatSync, realpathSync } from 'node:fs'; import { resolve, sep } from 'node:path';
+export class RootRegistry { private readonly roots = new Map<string,{path:string;generation:number}>(); register(id:string,path:string):string { if(!existsSync(path)) throw new Error('root does not exist'); const generation=(this.roots.get(id)?.generation??0)+1; this.roots.set(id,{path:realpathSync(path),generation}); return `${id}:${generation}`; } resolve(handle:string,relative:string):string { const [id,g] = handle.split(':'); const root=this.roots.get(id ?? ''); if(!root||root.generation!==Number(g)||!relative||relative.includes('\\')) throw new Error('stale or invalid root handle'); const candidate=resolve(root.path,relative); if(!candidate.startsWith(`${root.path}${sep}`)||!existsSync(candidate)||lstatSync(candidate).isSymbolicLink()||!realpathSync(candidate).startsWith(`${root.path}${sep}`)) throw new Error('path escapes canonical root'); return candidate; } }
+export function resolveRootPath(root:string,relative:string):string { const r=new RootRegistry(); return r.resolve(r.register('root',root),relative); }
