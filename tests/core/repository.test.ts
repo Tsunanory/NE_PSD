@@ -200,6 +200,34 @@ describe('durable repository', () => {
     repository.close();
   });
 
+  it('fails closed for contract-invalid persisted snapshot rows', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-invalid-snapshot-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('invalid-snapshot');
+    createQualified(repository, value);
+    repository.db.prepare("UPDATE jobs SET state='not-a-state' WHERE job_id=?").run(value.jobId);
+    expect(() => repository.snapshot(value.jobId)).toThrowError(/persisted job snapshot/i);
+    repository.db.prepare("UPDATE jobs SET state='ready' WHERE job_id=?").run(value.jobId);
+    repository.db.prepare("UPDATE assets SET status='not-a-status',attempt=9,error_json=? WHERE job_id=? AND asset_id=?").run(JSON.stringify({ code: 'BAD' }), value.jobId, 'asset-1');
+    expect(() => repository.snapshot(value.jobId)).toThrowError(/persisted job snapshot/i);
+    repository.close();
+  });
+
+  it('fails closed for contract-invalid persisted events', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-invalid-event-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('invalid-event');
+    createQualified(repository, value);
+    repository.appendEvent(value.jobId, 'snapshot');
+    const stored = repository.db.prepare('SELECT sequence,event_json FROM events WHERE job_id=?').get(value.jobId) as { sequence: number; event_json: string };
+    const event = JSON.parse(stored.event_json) as Record<string, unknown>;
+    event.sequence = stored.sequence + 1;
+    (event.snapshot as Record<string, unknown>).jobId = 'foreign-job';
+    repository.db.prepare('UPDATE events SET event_json=? WHERE job_id=? AND sequence=?').run(JSON.stringify(event), value.jobId, stored.sequence);
+    expect(() => repository.events(value.jobId)).toThrowError(/persisted event/i);
+    repository.close();
+  });
+
   it('rejects a tampered profile even when qualification strings match', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-profile-binding-')), 'state.sqlite');
     const repository = new JobRepository(db);

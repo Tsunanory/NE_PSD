@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetStatus, DomainError, JobEvent, JobSnapshot, JobSpec } from '@ne-psd/contracts';
-import { TemplateProfileSchema, sha256Json, validateJobSpec } from '@ne-psd/contracts';
+import { JobEventSchema, JobSnapshotSchema, TemplateProfileSchema, sha256Json, validateJobSpec } from '@ne-psd/contracts';
 import { makeEvent, type EventKind } from './events.js';
 import { assertAssetTransition, assertSnapshotCounters } from './state-machine.js';
 
@@ -116,6 +116,7 @@ export class JobRepository {
     let assets: JobSnapshot['assets'];
     try { assets = rows.map((row) => ({ assetId: row.asset_id, status: row.status, attempt: row.attempt, error: row.error_json ? JSON.parse(row.error_json) as DomainError : null })); } catch { throw new Error('persisted asset error JSON is malformed'); }
     const snapshot: JobSnapshot = { jobId, state: job.state, total: rows.length, complete: rows.filter((row) => row.status === 'complete').length, failed: rows.filter((row) => row.status === 'failed').length, blocked: rows.filter((row) => row.status === 'blocked').length, assets };
+    if (!JobSnapshotSchema.safeParse(snapshot).success) throw new Error('persisted job snapshot is invalid');
     assertSnapshotCounters(snapshot);
     return snapshot;
   }
@@ -128,7 +129,15 @@ export class JobRepository {
       return event;
     })();
   }
-  events(jobId: string): JobEvent[] { try { return (this.db.prepare('SELECT event_json FROM events WHERE job_id=? ORDER BY sequence').all(jobId) as Array<{ event_json: string }>).map((row) => JSON.parse(row.event_json) as JobEvent); } catch { throw new Error('persisted event JSON is malformed'); } }
+  events(jobId: string): JobEvent[] {
+    try {
+      return (this.db.prepare('SELECT sequence,event_json FROM events WHERE job_id=? ORDER BY sequence').all(jobId) as Array<{ sequence: number; event_json: string }>).map((row) => {
+        const parsed = JobEventSchema.safeParse(JSON.parse(row.event_json));
+        if (!parsed.success || parsed.data.jobId !== jobId || parsed.data.snapshot.jobId !== jobId || parsed.data.sequence !== row.sequence) throw new Error('invalid persisted event');
+        return parsed.data;
+      });
+    } catch { throw new Error('persisted event JSON is malformed or invalid'); }
+  }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
   recordReview(record: ReviewRecord): void { this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
   recordPublication(record: PublicationRecord): void {
