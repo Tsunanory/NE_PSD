@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { JobRepository } from '@ne-psd/core';
 import type { JobSpec } from '@ne-psd/contracts';
 
@@ -66,6 +67,39 @@ describe('durable repository', () => {
 
     const reopenedAgain = new JobRepository(db);
     expect(() => reopenedAgain.recordPublication({ publicationId: 'publication-duplicate-transaction', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-valid', path: '/tmp/other' })).toThrow();
+    reopenedAgain.close();
+  });
+
+  it('upgrades the legacy attempt foreign keys without losing persisted rows', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-legacy-migration-')), 'state.sqlite');
+    const legacy = new Database(db);
+    legacy.pragma('foreign_keys = ON');
+    legacy.exec(`
+      CREATE TABLE jobs (job_id TEXT PRIMARY KEY, spec_json TEXT NOT NULL, state TEXT NOT NULL, schema_version INTEGER NOT NULL, contract_version INTEGER NOT NULL, parent_job_id TEXT, requested_control TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE assets (asset_id TEXT NOT NULL, job_id TEXT NOT NULL, source_json TEXT NOT NULL, status TEXT NOT NULL, attempt INTEGER NOT NULL, error_json TEXT, PRIMARY KEY(job_id, asset_id), FOREIGN KEY(job_id) REFERENCES jobs(job_id) ON DELETE CASCADE);
+      CREATE TABLE attempts (job_id TEXT NOT NULL, asset_id TEXT NOT NULL, attempt INTEGER NOT NULL, transaction_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL, evidence_json TEXT, created_at TEXT NOT NULL, PRIMARY KEY(job_id, asset_id, attempt), FOREIGN KEY(job_id, asset_id) REFERENCES assets(job_id, asset_id) ON DELETE CASCADE);
+      CREATE TABLE reviews (review_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, asset_id TEXT NOT NULL, attempt INTEGER NOT NULL, review_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(job_id, asset_id, attempt), FOREIGN KEY(job_id, asset_id) REFERENCES assets(job_id, asset_id) ON DELETE CASCADE);
+      CREATE TABLE publications (publication_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, asset_id TEXT NOT NULL, attempt INTEGER NOT NULL, transaction_key TEXT NOT NULL UNIQUE, path TEXT NOT NULL, manifest_json TEXT, created_at TEXT NOT NULL, FOREIGN KEY(job_id, asset_id) REFERENCES assets(job_id, asset_id) ON DELETE CASCADE);
+      CREATE TABLE qualifications (qualification_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, profile_sha256 TEXT NOT NULL, evidence_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(profile_id, profile_sha256));
+    `);
+    const value = spec('legacy');
+    const now = new Date().toISOString();
+    legacy.prepare('INSERT INTO jobs VALUES (?,?,?,?,?,?,?,?,?)').run(value.jobId, JSON.stringify(value), 'running', 1, 1, null, null, now, now);
+    legacy.prepare('INSERT INTO assets VALUES (?,?,?,?,?,?)').run('asset-1', value.jobId, JSON.stringify(value.assets[0]), 'rendering', 1, null);
+    legacy.prepare('INSERT INTO attempts VALUES (?,?,?,?,?,?,?)').run(value.jobId, 'asset-1', 1, 'legacy-tx', 'rendering', null, now);
+    legacy.prepare('INSERT INTO qualifications VALUES (?,?,?,?,?)').run('qualification', 'profile', hash, '{"source":"legacy"}', now);
+    legacy.close();
+
+    const reopened = new JobRepository(db);
+    expect(reopened.snapshot('legacy').assets[0]!.status).toBe('rendering');
+    expect(() => reopened.recordReview({ reviewId: 'legacy-invalid-review', jobId: 'legacy', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
+    expect(() => reopened.recordPublication({ publicationId: 'legacy-invalid-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 2, transactionKey: 'legacy-invalid-tx', path: '/tmp/other' })).toThrow();
+    reopened.recordReview({ reviewId: 'legacy-review', jobId: 'legacy', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    reopened.recordPublication({ publicationId: 'legacy-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 1, transactionKey: 'legacy-pub-tx', path: '/tmp/published' });
+    reopened.close();
+
+    const reopenedAgain = new JobRepository(db);
+    expect(() => reopenedAgain.recordPublication({ publicationId: 'legacy-duplicate', jobId: 'legacy', assetId: 'asset-1', attempt: 1, transactionKey: 'legacy-pub-tx', path: '/tmp/other' })).toThrow();
     reopenedAgain.close();
   });
 

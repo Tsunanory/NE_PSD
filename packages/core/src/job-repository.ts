@@ -10,8 +10,11 @@ import { assertAssetTransition, assertSnapshotCounters } from './state-machine.j
 
 type Sqlite = InstanceType<typeof Database>;
 type AssetRow = { job_id: string; asset_id: string; status: AssetStatus; attempt: number; error_json: string | null };
-const migrationPath = join(dirname(fileURLToPath(import.meta.url)), 'migrations/001-initial.sql');
-const MIGRATION = readFileSync(migrationPath, 'utf8');
+const migrationDirectory = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
+const MIGRATIONS = [
+  { version: 1, sql: readFileSync(join(migrationDirectory, '001-initial.sql'), 'utf8') },
+  { version: 2, sql: readFileSync(join(migrationDirectory, '002-attempt-foreign-keys.sql'), 'utf8') },
+];
 
 export type ReviewRecord = { reviewId: string; jobId: string; assetId: string; attempt: number; payload: unknown };
 export type PublicationRecord = { publicationId: string; jobId: string; assetId: string; attempt: number; transactionKey: string; path: string; manifest?: unknown };
@@ -25,10 +28,20 @@ export class JobRepository {
     this.db.pragma('foreign_keys = ON');
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
-    this.db.exec(MIGRATION);
+    this.migrate();
   }
   close(): void { this.db.close(); }
-  migrate(): void { this.db.exec(MIGRATION); }
+  migrate(): void {
+    this.db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
+    for (const migration of MIGRATIONS) {
+      const applied = this.db.prepare('SELECT 1 FROM schema_migrations WHERE version=?').get(migration.version);
+      if (applied) continue;
+      this.db.transaction(() => {
+        this.db.exec(migration.sql);
+        this.db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?,?)').run(migration.version, new Date().toISOString());
+      })();
+    }
+  }
 
   createJob(spec: JobSpec, parentJobId: string | null = null): void {
     const qualification = this.db.prepare('SELECT profile_id,profile_sha256 FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string } | undefined;

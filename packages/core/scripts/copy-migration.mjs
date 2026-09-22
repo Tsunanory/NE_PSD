@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const destination = resolve(root, '../dist/migrations/001-initial.sql');
-await mkdir(dirname(destination), { recursive: true });
-await copyFile(resolve(root, '../src/migrations/001-initial.sql'), destination);
+const destination = resolve(root, '../dist/migrations');
+await mkdir(destination, { recursive: true });
+for (const migration of ['001-initial.sql', '002-attempt-foreign-keys.sql']) {
+  await copyFile(resolve(root, '../src/migrations', migration), resolve(destination, migration));
+}
