@@ -210,7 +210,7 @@ describe('durable repository', () => {
     expect(() => repository.recordPublication({ publicationId: 'wrong-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/untrusted/published' })).toThrow(/output root|binding/i);
     expect(() => repository.recordPublication({ publicationId: 'wrong-key', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'caller-key', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding|identity/i);
     repository.recordPublication({ publicationId: 'valid-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/published' });
-    renameSync('/tmp/ne-psd-out', '/tmp/ne-psd-out-replaced');
+    renameSync('/tmp/ne-psd-out', `/tmp/ne-psd-out-replaced-${process.pid}`);
     mkdirSync('/tmp/ne-psd-out', { recursive: true });
     expect(() => repository.recordPublication({ publicationId: 'replaced-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/new' })).toThrow(/output root|binding/i);
     repository.close();
