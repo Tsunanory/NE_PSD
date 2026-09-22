@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
+import { mkdirSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -12,7 +13,7 @@ import type { JobSpec } from '@ne-psd/contracts';
 
 const hash = 'a'.repeat(64);
 const selector = { documentRoute: [], layerPath: [{ name: 'target', kind: 'smartObject' as const, fingerprint: 'f' }] };
-const rootBinding = (rootId = 'out'): OutputRootBinding => ({ rootId, canonicalRoot: `/tmp/ne-psd-${rootId}`, canonicalRootIdentity: createHash('sha256').update(`/tmp/ne-psd-${rootId}`).digest('hex') });
+const rootBinding = (rootId = 'out'): OutputRootBinding => { const rawRoot = `/tmp/ne-psd-${rootId}`; mkdirSync(rawRoot, { recursive: true }); const canonicalRoot = realpathSync(rawRoot); return { rootId, canonicalRoot, canonicalRootIdentity: createHash('sha256').update(canonicalRoot).digest('hex') }; };
 const spec = (jobId = 'job-1'): JobSpec => {
  const value: JobSpec = ({
   schemaVersion: 1, jobId, outputRootId: 'out', modelProfileId: 'brain', reviewerModelProfileId: 'reviewer', reviewPolicySha256: hash,
@@ -201,6 +202,11 @@ describe('durable repository', () => {
     expect(() => repository.createJob(value)).toThrowError(/output-root binding/i);
     repository.createJob(value, null, rootBinding());
     repository.transition('root-bound', 'asset-1', 'rendering');
+    expect(() => repository.recordPublication({ publicationId: 'traversal', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/../escape' })).toThrow(/output root|binding/i);
+    mkdirSync('/tmp/ne-psd-untrusted', { recursive: true });
+    try { unlinkSync('/tmp/ne-psd-out/link'); } catch {}
+    symlinkSync('/tmp/ne-psd-untrusted', '/tmp/ne-psd-out/link', 'dir');
+    expect(() => repository.recordPublication({ publicationId: 'symlink', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/link/file' })).toThrow(/output root|binding/i);
     expect(() => repository.recordPublication({ publicationId: 'wrong-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/untrusted/published' })).toThrow(/output root|binding/i);
     expect(() => repository.recordPublication({ publicationId: 'wrong-key', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'caller-key', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding|identity/i);
     repository.recordPublication({ publicationId: 'valid-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/published' });

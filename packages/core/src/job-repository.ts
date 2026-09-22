@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetStatus, DomainError, JobEvent, JobSnapshot, JobSpec } from '@ne-psd/contracts';
 import { TemplateProfileSchema, sha256Json } from '@ne-psd/contracts';
@@ -22,6 +22,14 @@ export type ReviewRecord = { reviewId: string; jobId: string; assetId: string; a
 export type PublicationRecord = { publicationId: string; jobId: string; assetId: string; attempt: number; transactionKey: string; path: string; manifest?: unknown };
 export type QualificationRecord = { qualificationId: string; profileId: string; profileSha256: string; evidence: unknown; profile: unknown };
 export type OutputRootBinding = { rootId: string; canonicalRoot: string; canonicalRootIdentity: string };
+function realpathWithExistingAncestor(path: string): string {
+  try { return realpathSync(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const parent = resolve(path, '..');
+    if (parent === path) throw error;
+    return resolve(realpathWithExistingAncestor(parent), path.slice(parent.length + 1));
+  }
+}
 
 export class JobRepository {
   readonly db: Sqlite;
@@ -47,7 +55,7 @@ export class JobRepository {
   }
 
   createJob(spec: JobSpec, parentJobId: string | null = null, outputRoot?: OutputRootBinding): void {
-    if (!outputRoot || outputRoot.rootId !== spec.outputRootId || !outputRoot.canonicalRoot.startsWith('/') || outputRoot.canonicalRootIdentity !== createHash('sha256').update(outputRoot.canonicalRoot).digest('hex')) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
+    if (!outputRoot || outputRoot.rootId !== spec.outputRootId || !isAbsolute(outputRoot.canonicalRoot) || outputRoot.canonicalRootIdentity !== createHash('sha256').update(outputRoot.canonicalRoot).digest('hex') || realpathSync(outputRoot.canonicalRoot) !== outputRoot.canonicalRoot) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
     if (spec.profile.profileSha256 !== sha256Json(spec.profile, { excludeKeys: ['profileSha256'] })) throw Object.assign(new Error('template profile digest mismatch'), { code: 'PROFILE_DIGEST_MISMATCH' });
     const qualification = this.db.prepare('SELECT profile_id,profile_sha256,profile_json FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string; profile_json: string | null } | undefined;
     if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
@@ -118,7 +126,9 @@ export class JobRepository {
   recordPublication(record: PublicationRecord): void {
     const job = this.db.prepare('SELECT output_root_path AS root,output_root_identity AS identity FROM jobs WHERE job_id=?').get(record.jobId) as { root: string | null; identity: string | null } | undefined;
     const expected = `${record.jobId}:${record.assetId}:${record.attempt}`;
-    if (!job?.root || !job.identity || record.transactionKey !== expected || !record.path.startsWith(`${job.root}/`)) throw Object.assign(new Error('publication is outside trusted output root or has invalid transaction identity'), { code: 'PUBLICATION_BINDING_MISMATCH' });
+    let confined = false;
+    try { const root = realpathSync(job?.root ?? ''); const candidate = realpathWithExistingAncestor(record.path); const rel = relative(root, candidate); confined = rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); } catch { confined = false; }
+    if (!job?.root || !job.identity || record.transactionKey !== expected || !confined) throw Object.assign(new Error('publication is outside trusted output root or has invalid transaction identity'), { code: 'PUBLICATION_BINDING_MISMATCH' });
     this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, expected, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString());
   }
   recordQualification(record: QualificationRecord): void {
