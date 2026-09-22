@@ -26,7 +26,7 @@ describe('model profile qualification and selection', () => {
 
   it('permits only explicit qualified interactive profiles', () => {
     const profile = local({ profileId: 'qualified-local' });
-    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'planning', profile, explicitSelection: true })).not.toThrow();
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'planning', profile, explicitSelection: true, profileQualified: true })).not.toThrow();
     expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'planning', profile, explicitSelection: false })).toThrow();
     expect(() => assertInvocationAllowed({ trigger: 'scheduled', jobKind: 'planning', profile, explicitSelection: true })).toThrow();
   });
@@ -34,8 +34,8 @@ describe('model profile qualification and selection', () => {
   it('allows a qualified local vision reviewer and Codex only when explicitly selected', () => {
     const vision = local({ profileId: 'qualified-vision', provider: 'local-vision', capabilities: { jsonSchema: true, vision: true, tools: true } });
     const codex = ModelProfileSchema.parse({ profileId: 'qualified-codex', provider: 'codex', modelId: 'codex', provenance: { kind: 'remote', provider: 'codex', modelId: 'codex', revision: 'rev', qualificationEvidencePath: 'evidence/codex.json' }, endpoint: 'codex://bridge', quantization: null, contextTokens: 4096, maxOutputTokens: 512, capabilities: { jsonSchema: true, vision: true, tools: true } });
-    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile: vision, explicitSelection: true })).not.toThrow();
-    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile: codex, explicitSelection: true })).not.toThrow();
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile: vision, explicitSelection: true, profileQualified: true })).not.toThrow();
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile: codex, explicitSelection: true, profileQualified: true })).not.toThrow();
     expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile: codex, explicitSelection: false })).toThrow();
   });
 
@@ -43,5 +43,17 @@ describe('model profile qualification and selection', () => {
     const adapter = { inspect: async () => ({ available: true, errors: [] }), qualify: async () => ({ qualified: false, evidencePaths: [], errors: [] }) };
     const result = await qualifyModelProfile(local({ profileId: 'healthy-endpoint' }), new AbortController().signal, adapter);
     expect(result.qualified).toBe(false);
+  });
+
+  it('fails closed for absent qualification and rejects text-only visual review', () => {
+    const profile = local({ profileId: 'text-only', capabilities: { jsonSchema: true, vision: false, tools: true } });
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile, explicitSelection: true })).toThrow(/vision|qualified/i);
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'planning', profile, explicitSelection: true, profileQualified: false })).toThrow(/qualified/i);
+  });
+
+  it('cancels and invalidates a qualification when evidence context changes', async () => {
+    const controller = new AbortController();
+    const adapter = { inspect: async () => ({ available: true, errors: [] }), qualify: async () => { controller.abort(); return { qualified: true, evidencePaths: ['evidence/report.json'], errors: [] }; } };
+    await expect(qualifyModelProfile(local(), controller.signal, adapter)).rejects.toThrow(/aborted/i);
   });
 });

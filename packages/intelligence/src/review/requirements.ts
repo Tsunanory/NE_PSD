@@ -8,5 +8,6 @@ export function policyDigest(policy: Omit<ReviewPolicy, 'policySha256'> | Review
 }
 export function createReviewPolicy(options: { visualGate?: 'qualifiedVisionReviewer' | 'humanPerAsset'; promptSha256?: string } = {}): ReviewPolicy {
   const base = { schemaVersion: 1 as const, policyId: 'ne-psd-mandatory-review-v1', promptSha256: options.promptSha256 ?? sha256Json('ne-psd-review-prompt-v1'), requirements: MANDATORY_REQUIREMENTS, visualGate: options.visualGate ?? 'qualifiedVisionReviewer' };
-  return ReviewPolicySchema.parse({ ...base, policySha256: policyDigest(base) });
+  const requirements = base.requirements.map((entry) => entry.id === 'VISUAL.QUALIFIED' ? { ...entry, evaluator: base.visualGate === 'humanPerAsset' ? 'human' as const : 'model' as const } : entry);
+  return ReviewPolicySchema.parse({ ...base, requirements, policySha256: policyDigest({ ...base, requirements }) });
 }

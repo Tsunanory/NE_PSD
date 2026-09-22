@@ -19,4 +19,9 @@ describe('mandatory review policy', () => {
     expect(policy.policySha256).toMatch(/^[a-f0-9]{64}$/);
     expect(createReviewPolicy().policySha256).toBe(policy.policySha256);
   });
+
+  it('uses a human evaluator for explicit human-per-asset mode', () => {
+    const policy = createReviewPolicy({ visualGate: 'humanPerAsset' });
+    expect(policy.requirements.find((entry) => entry.id === 'VISUAL.QUALIFIED')?.evaluator).toBe('human');
+  });
 });

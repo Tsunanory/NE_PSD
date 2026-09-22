@@ -16,7 +16,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck"
+    "check": "npm run typecheck",
+    "verify:model": "node dist/cli/verify-model-runner.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
