@@ -1,0 +1,2 @@
+import { describe, expect, it } from 'vitest'; import { resolvePackagedRuntime } from '../../apps/desktop/src/main/packaged-runtime.js';
+describe('packaged runtime resolution', () => { it('resolves resources relative to process.resourcesPath, never cwd', () => { const result = resolvePackagedRuntime('C:\\Program Files\\NE PSD\\resources', { nodeRelativePath: 'runtime/node.exe', mcpRelativePath: 'runtime/mcp.cjs' }); expect(result.nodePath).toContain('resources'); expect(result.nodePath).toContain('runtime'); expect(result.nodePath).not.toContain(process.cwd()); }); });

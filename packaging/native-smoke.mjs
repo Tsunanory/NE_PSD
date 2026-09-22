@@ -1,0 +1,1 @@
+if (process.platform !== 'win32') { console.error('BLOCKED — native smoke requires Windows 11 x64'); process.exitCode = 2; } else { console.error('BLOCKED — Windows native vendor inputs are not staged'); process.exitCode = 2; }

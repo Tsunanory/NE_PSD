@@ -1,0 +1,2 @@
+import { describe, expect, it } from 'vitest'; import { prerequisiteMessages, evaluatePrerequisites } from '../../apps/desktop/src/main/prerequisites.js';
+describe('desktop prerequisites', () => { it('fails closed for absent Photoshop/model/runtime and preserves literal messages', () => { const result = evaluatePrerequisites({ photoshop: false, model: false, runtime: false, output: false }); expect(result.ready).toBe(false); expect(result.messages).toEqual(expect.arrayContaining([prerequisiteMessages.photoshop, prerequisiteMessages.model])); }); });
