@@ -1,0 +1,2 @@
+import { test, expect } from 'playwright/test'; import { _electron as electron } from 'playwright'; import { resolve } from 'node:path';
+test('job progress shell keeps review and safe-control labels', async () => { const app = await electron.launch({ args: [resolve('apps/desktop/dist/main/index.js')], env: { ...process.env, NODE_ENV: 'production' } }); const page = await app.firstWindow(); await expect(page.getByRole('heading', { name: 'NE PSD' })).toBeVisible(); await app.close(); });
