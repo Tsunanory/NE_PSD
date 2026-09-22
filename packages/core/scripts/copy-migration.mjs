@@ -5,6 +5,6 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const destination = resolve(root, '../dist/migrations');
 await mkdir(destination, { recursive: true });
-for (const migration of ['001-initial.sql', '002-attempt-foreign-keys.sql', '003-qualified-profile.sql']) {
+for (const migration of ['001-initial.sql', '002-attempt-foreign-keys.sql', '003-qualified-profile.sql', '004-job-output-root.sql']) {
   await copyFile(resolve(root, '../src/migrations', migration), resolve(destination, migration));
 }

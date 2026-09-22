@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetStatus, DomainError, JobEvent, JobSnapshot, JobSpec } from '@ne-psd/contracts';
@@ -15,11 +15,13 @@ const MIGRATIONS = [
   { version: 1, sql: readFileSync(join(migrationDirectory, '001-initial.sql'), 'utf8') },
   { version: 2, sql: readFileSync(join(migrationDirectory, '002-attempt-foreign-keys.sql'), 'utf8') },
   { version: 3, sql: readFileSync(join(migrationDirectory, '003-qualified-profile.sql'), 'utf8') },
+  { version: 4, sql: readFileSync(join(migrationDirectory, '004-job-output-root.sql'), 'utf8') },
 ];
 
 export type ReviewRecord = { reviewId: string; jobId: string; assetId: string; attempt: number; payload: unknown };
 export type PublicationRecord = { publicationId: string; jobId: string; assetId: string; attempt: number; transactionKey: string; path: string; manifest?: unknown };
 export type QualificationRecord = { qualificationId: string; profileId: string; profileSha256: string; evidence: unknown; profile: unknown };
+export type OutputRootBinding = { rootId: string; canonicalRoot: string; canonicalRootIdentity: string };
 
 export class JobRepository {
   readonly db: Sqlite;
@@ -44,7 +46,8 @@ export class JobRepository {
     }
   }
 
-  createJob(spec: JobSpec, parentJobId: string | null = null): void {
+  createJob(spec: JobSpec, parentJobId: string | null = null, outputRoot?: OutputRootBinding): void {
+    if (!outputRoot || outputRoot.rootId !== spec.outputRootId || !outputRoot.canonicalRoot.startsWith('/') || outputRoot.canonicalRootIdentity !== createHash('sha256').update(outputRoot.canonicalRoot).digest('hex')) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
     if (spec.profile.profileSha256 !== sha256Json(spec.profile, { excludeKeys: ['profileSha256'] })) throw Object.assign(new Error('template profile digest mismatch'), { code: 'PROFILE_DIGEST_MISMATCH' });
     const qualification = this.db.prepare('SELECT profile_id,profile_sha256,profile_json FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string; profile_json: string | null } | undefined;
     if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
@@ -54,7 +57,7 @@ export class JobRepository {
     if (qualification.profile_id !== spec.profile.profileId || qualification.profile_sha256 !== spec.profile.profileSha256) throw Object.assign(new Error('template qualification does not match profile'), { code: 'QUALIFICATION_MISMATCH' });
     const now = new Date().toISOString();
     this.db.transaction(() => {
-      this.db.prepare('INSERT INTO jobs(job_id,spec_json,state,schema_version,contract_version,parent_job_id,requested_control,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(spec.jobId, JSON.stringify(spec), 'ready', spec.schemaVersion, 1, parentJobId, null, now, now);
+      this.db.prepare('INSERT INTO jobs(job_id,spec_json,state,schema_version,contract_version,parent_job_id,requested_control,created_at,updated_at,output_root_path,output_root_identity) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(spec.jobId, JSON.stringify(spec), 'ready', spec.schemaVersion, 1, parentJobId, null, now, now, outputRoot.canonicalRoot, outputRoot.canonicalRootIdentity);
       const insert = this.db.prepare('INSERT INTO assets(asset_id,job_id,source_json,status,attempt,error_json) VALUES(?,?,?,?,?,NULL)');
       for (const asset of spec.assets) insert.run(asset.assetId, spec.jobId, JSON.stringify(asset), 'queued', 0);
     })();
@@ -112,7 +115,12 @@ export class JobRepository {
   events(jobId: string): JobEvent[] { return (this.db.prepare('SELECT event_json FROM events WHERE job_id=? ORDER BY sequence').all(jobId) as Array<{ event_json: string }>).map((row) => JSON.parse(row.event_json) as JobEvent); }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
   recordReview(record: ReviewRecord): void { this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
-  recordPublication(record: PublicationRecord): void { this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, record.transactionKey, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString()); }
+  recordPublication(record: PublicationRecord): void {
+    const job = this.db.prepare('SELECT output_root_path AS root,output_root_identity AS identity FROM jobs WHERE job_id=?').get(record.jobId) as { root: string | null; identity: string | null } | undefined;
+    const expected = `${record.jobId}:${record.assetId}:${record.attempt}`;
+    if (!job?.root || !job.identity || record.transactionKey !== expected || !record.path.startsWith(`${job.root}/`)) throw Object.assign(new Error('publication is outside trusted output root or has invalid transaction identity'), { code: 'PUBLICATION_BINDING_MISMATCH' });
+    this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, expected, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString());
+  }
   recordQualification(record: QualificationRecord): void {
     const profile = TemplateProfileSchema.safeParse(record.profile);
     if (!profile.success || profile.data.profileId !== record.profileId || profile.data.profileSha256 !== record.profileSha256 || sha256Json(profile.data, { excludeKeys: ['profileSha256'] }) !== record.profileSha256) throw Object.assign(new Error('qualification profile digest mismatch'), { code: 'QUALIFICATION_MISMATCH' });
@@ -139,7 +147,9 @@ export class JobRepository {
       if (chosen.length === 0 || new Set(chosen).size !== chosen.length || chosen.some((id) => !allowed.has(id))) throw Object.assign(new Error('no valid failed assets to retry; blocked review work requires recovery'), { code: 'NO_FAILED_ASSETS' });
       const spec = JSON.parse(source.spec_json) as JobSpec;
       const successor: JobSpec = { ...spec, jobId: randomUUID(), assets: spec.assets.filter((asset) => chosen.includes(asset.assetId)) };
-      this.createJob(successor, jobId);
+      const root = this.db.prepare('SELECT output_root_path AS canonicalRoot,output_root_identity AS canonicalRootIdentity FROM jobs WHERE job_id=?').get(jobId) as { canonicalRoot: string | null; canonicalRootIdentity: string | null } | undefined;
+      if (!root?.canonicalRoot || !root.canonicalRootIdentity) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
+      this.createJob(successor, jobId, { rootId: successor.outputRootId, canonicalRoot: root.canonicalRoot, canonicalRootIdentity: root.canonicalRootIdentity });
       return { jobId: successor.jobId };
     })();
   }

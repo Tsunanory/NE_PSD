@@ -4,12 +4,15 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { JobRepository } from '@ne-psd/core';
+import type { OutputRootBinding } from '@ne-psd/core';
 import { sha256Json } from '@ne-psd/contracts';
 import type { JobSpec } from '@ne-psd/contracts';
 
 const hash = 'a'.repeat(64);
 const selector = { documentRoute: [], layerPath: [{ name: 'target', kind: 'smartObject' as const, fingerprint: 'f' }] };
+const rootBinding = (rootId = 'out'): OutputRootBinding => ({ rootId, canonicalRoot: `/tmp/ne-psd-${rootId}`, canonicalRootIdentity: createHash('sha256').update(`/tmp/ne-psd-${rootId}`).digest('hex') });
 const spec = (jobId = 'job-1'): JobSpec => {
  const value: JobSpec = ({
   schemaVersion: 1, jobId, outputRootId: 'out', modelProfileId: 'brain', reviewerModelProfileId: 'reviewer', reviewPolicySha256: hash,
@@ -22,7 +25,7 @@ const spec = (jobId = 'job-1'): JobSpec => {
 };
 
 describe('durable repository', () => {
-  const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile }); repository.createJob(value); };
+  const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile }); repository.createJob(value, null, rootBinding(value.outputRootId)); };
   it('migrates, reopens, snapshots from rows, and increments event sequence per job', async () => {
     expect(existsSync(join(process.cwd(), 'packages/core/dist/migrations/001-initial.sql'))).toBe(true);
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-db-')), 'state.sqlite');
@@ -47,11 +50,11 @@ describe('durable repository', () => {
     repository.transition('records', 'asset-1', 'rendering');
     expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
     repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
-    repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/published' });
+    repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'records:asset-1:1', path: '/tmp/ne-psd-out/published' });
     const extra = spec('extra').profile; extra.profileId = 'profile-2'; extra.qualificationId = 'qualification-1'; extra.profileSha256 = sha256Json(extra, { excludeKeys: ['profileSha256'] });
     repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile-2', profileSha256: extra.profileSha256, evidence: { path: 'evidence' }, profile: extra });
     expect(repository.getQualification('qualification-1')?.profileSha256).toBe(extra.profileSha256);
-    expect(() => repository.recordPublication({ publicationId: 'publication-2', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/other' })).toThrow();
+    expect(() => repository.recordPublication({ publicationId: 'publication-2', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'records:asset-1:1', path: '/tmp/ne-psd-out/other' })).toThrow();
     repository.close();
   });
 
@@ -61,18 +64,18 @@ describe('durable repository', () => {
     createQualified(first, spec('attempt-integrity'));
     first.transition('attempt-integrity', 'asset-1', 'rendering');
     expect(() => first.recordReview({ reviewId: 'review-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
-    expect(() => first.recordPublication({ publicationId: 'publication-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, transactionKey: 'tx-missing-attempt', path: '/tmp/other' })).toThrow();
+    expect(() => first.recordPublication({ publicationId: 'publication-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, transactionKey: 'attempt-integrity:asset-1:2', path: '/tmp/ne-psd-out/other' })).toThrow();
     first.close();
 
     const reopened = new JobRepository(db);
     expect(() => reopened.recordReview({ reviewId: 'review-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, payload: { verdict: 'blocked' } })).toThrow();
-    expect(() => reopened.recordPublication({ publicationId: 'publication-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, transactionKey: 'tx-wrong-asset', path: '/tmp/other' })).toThrow();
+    expect(() => reopened.recordPublication({ publicationId: 'publication-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, transactionKey: 'attempt-integrity:missing-asset:1', path: '/tmp/ne-psd-out/other' })).toThrow();
     reopened.recordReview({ reviewId: 'review-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
-    reopened.recordPublication({ publicationId: 'publication-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-valid', path: '/tmp/published' });
+    reopened.recordPublication({ publicationId: 'publication-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'attempt-integrity:asset-1:1', path: '/tmp/ne-psd-out/published' });
     reopened.close();
 
     const reopenedAgain = new JobRepository(db);
-    expect(() => reopenedAgain.recordPublication({ publicationId: 'publication-duplicate-transaction', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-valid', path: '/tmp/other' })).toThrow();
+    expect(() => reopenedAgain.recordPublication({ publicationId: 'publication-duplicate-transaction', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'attempt-integrity:asset-1:1', path: '/tmp/ne-psd-out/other' })).toThrow();
     reopenedAgain.close();
   });
 
@@ -101,7 +104,7 @@ describe('durable repository', () => {
     expect(() => reopened.recordReview({ reviewId: 'legacy-invalid-review', jobId: 'legacy', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
     expect(() => reopened.recordPublication({ publicationId: 'legacy-invalid-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 2, transactionKey: 'legacy-invalid-tx', path: '/tmp/other' })).toThrow();
     reopened.recordReview({ reviewId: 'legacy-review', jobId: 'legacy', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
-    reopened.recordPublication({ publicationId: 'legacy-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 1, transactionKey: 'legacy-pub-tx', path: '/tmp/published' });
+    expect(() => reopened.recordPublication({ publicationId: 'legacy-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 1, transactionKey: 'legacy:asset-1:1', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding/i);
     reopened.close();
 
     const reopenedAgain = new JobRepository(db);
@@ -169,7 +172,7 @@ describe('durable repository', () => {
   it('rejects a job whose template qualification lookup is missing', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-unqualified-')), 'state.sqlite');
     const repository = new JobRepository(db);
-    expect(() => repository.createJob(spec('unqualified'))).toThrowError(/qualification/i);
+    expect(() => repository.createJob(spec('unqualified'), null, rootBinding())).toThrowError(/qualification/i);
     repository.close();
   });
 
@@ -187,6 +190,20 @@ describe('durable repository', () => {
     const repository = new JobRepository(db);
     const value = spec('unsealed-qualification');
     expect(() => repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'caller' } })).toThrowError(/profile digest/i);
+    repository.close();
+  });
+
+  it('requires the job root binding and derives publication identity from it', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-root-binding-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('root-bound');
+    repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile });
+    expect(() => repository.createJob(value)).toThrowError(/output-root binding/i);
+    repository.createJob(value, null, rootBinding());
+    repository.transition('root-bound', 'asset-1', 'rendering');
+    expect(() => repository.recordPublication({ publicationId: 'wrong-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/untrusted/published' })).toThrow(/output root|binding/i);
+    expect(() => repository.recordPublication({ publicationId: 'wrong-key', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'caller-key', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding|identity/i);
+    repository.recordPublication({ publicationId: 'valid-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/published' });
     repository.close();
   });
 
