@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   review_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
   UNIQUE(job_id, asset_id, attempt),
-  FOREIGN KEY(job_id, asset_id) REFERENCES assets(job_id, asset_id) ON DELETE CASCADE
+  FOREIGN KEY(job_id, asset_id, attempt) REFERENCES attempts(job_id, asset_id, attempt) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS publications (
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS publications (
   path TEXT NOT NULL,
   manifest_json TEXT,
   created_at TEXT NOT NULL,
-  FOREIGN KEY(job_id, asset_id) REFERENCES assets(job_id, asset_id) ON DELETE CASCADE
+  FOREIGN KEY(job_id, asset_id, attempt) REFERENCES attempts(job_id, asset_id, attempt) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS qualifications (

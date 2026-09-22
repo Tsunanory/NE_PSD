@@ -48,6 +48,27 @@ describe('durable repository', () => {
     repository.close();
   });
 
+  it('binds reviews and publications to an existing attempt across reopen', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-attempt-integrity-')), 'state.sqlite');
+    const first = new JobRepository(db);
+    createQualified(first, spec('attempt-integrity'));
+    first.transition('asset-1', 'rendering');
+    expect(() => first.recordReview({ reviewId: 'review-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
+    expect(() => first.recordPublication({ publicationId: 'publication-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, transactionKey: 'tx-missing-attempt', path: '/tmp/other' })).toThrow();
+    first.close();
+
+    const reopened = new JobRepository(db);
+    expect(() => reopened.recordReview({ reviewId: 'review-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, payload: { verdict: 'blocked' } })).toThrow();
+    expect(() => reopened.recordPublication({ publicationId: 'publication-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, transactionKey: 'tx-wrong-asset', path: '/tmp/other' })).toThrow();
+    reopened.recordReview({ reviewId: 'review-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    reopened.recordPublication({ publicationId: 'publication-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-valid', path: '/tmp/published' });
+    reopened.close();
+
+    const reopenedAgain = new JobRepository(db);
+    expect(() => reopenedAgain.recordPublication({ publicationId: 'publication-duplicate-transaction', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-valid', path: '/tmp/other' })).toThrow();
+    reopenedAgain.close();
+  });
+
   it('keeps pause and cancel requests pending until safe-boundary acknowledgement', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-control-')), 'state.sqlite');
     const repository = new JobRepository(db);
