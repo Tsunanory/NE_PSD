@@ -8,8 +8,9 @@ This task adds independent, deterministic test adapters under the stable `@ne-ps
 
 - Task 1 baseline: `12acf2afee26af5d83fc832b091679a3014b90de`.
 - Task 2 implementation: `d2ce2e53b5c1fa3394c734b7e503d599371c802c`.
-- Task 3 was developed and tested against predecessor `d2ce2e53b5c1fa3394c734b7e503d599371c802c`.
-- Task 3 final implementation SHA must be recorded by Task 4 from `git rev-parse HEAD`; a commit cannot contain its own SHA. This is a plan-defect ruling, not a qualification claim.
+- Task 3 implementation: `3f052457c7502c4716e0e14c1c1ca9960b17364f`.
+- Task 3 runtime-proof correction: `61b142812cb3e1d192b94fe3ddd5cf6a0354f3bc`.
+- Task 3 was developed and tested against predecessor `d2ce2e53b5c1fa3394c734b7e503d599371c802c`; Task 4 must use the finalized metadata commit as the new foundation baseline.
 
 Task 3 focused test:
 
@@ -19,7 +20,7 @@ Test Files 1 passed (1)
 Tests 20 passed (20)
 ```
 
-The required full commands were run after implementation on the available host runtime:
+The required full commands were run after implementation under Node `v22.23.2`/npm `10.9.8`:
 
 ```text
 npm run build       PASS
@@ -27,9 +28,9 @@ npm run check       PASS
 npm run test:contracts  PASS
 ```
 
-The full contract result was `Test Files 5 passed (5)` and `Tests 33 passed (33)`.
+The full contract result was `Test Files 5 passed (5)` and `Tests 33 passed (33)`. The focused fake suite passed `Test Files 1 passed (1)` and `Tests 20 passed (20)`.
 
-The required proof ran with Node `v22.23.2` and npm `10.9.8` using `/private/tmp/node-v22.23.2-darwin-arm64/bin`. No runtime mismatch remains for this handoff.
+The proof used `/private/tmp/node-v22.23.2-darwin-arm64/bin`; no runtime mismatch remains for this handoff.
 
 ## Dependency and export boundary
 
