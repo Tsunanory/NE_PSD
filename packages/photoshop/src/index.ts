@@ -5,6 +5,7 @@ export * from './types.js';
 export * from './session-lock.js';
 export * from './selectors.js';
 export * from './inspection.js';
+export * from './backend.js';
 
 export function parseRequest(input: unknown): RenderRequest {
   const request = RenderRequestSchema.parse(input);

@@ -13,6 +13,21 @@ Consumer impact: Photoshop adapter builds and runtime transport resolution becom
 Migration/build test: after A applies the dependency request, run `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm ci`, `npm run check`, and `npm run test:photoshop`. The B02 unit suite must remain child-process-free.
 
 B02 inherited blocker: Windows launch-path whitespace rejection remains governed by the existing pinned-launch validation. No correction is claimed here.
+## B12 transaction orchestration
+
+Status: implemented-and-fake-tested.
+
+The backend transaction boundary is `packages/photoshop/src/backend.ts`, exported from the package entry point. It validates the sealed profile and runtime tool binding, holds one installation lock for the complete asset, creates a fresh adapter-owned working session, opens and verifies the graph, deduplicates proven content resources, performs placement/fit/clipping through the session, verifies propagation and source hashes, exports exactly three variants through B11, writes relative evidence, discards owned documents, and returns `RenderEvidence`. Qualification is delegated directly to B10's qualifier with the same adapter lock; B12 does not seal candidates or retry mutations.
+
+Verification before handoff:
+
+- `npm run test:photoshop -- tests/photoshop/backend.test.ts`: 2 passed.
+- `npm run test:photoshop`: 133 passed, 1 inherited B04 selector failure (`SELECTOR_DOCUMENT_ROUTE_MISMATCH` expected, `SELECTOR_MISSING` received in `tests/photoshop/selectors.test.ts:89`). B12 does not modify B04.
+- `npm run check`: passed for all workspaces.
+- `git diff --check`: passed.
+
+Limitations: live Photoshop adapter wiring, Windows qualification, and source/dependency hash implementation remain adapter/integration gates. JPEG rendering requires the qualified session to provide an explicit background policy. No live Photoshop or Windows evidence is claimed.
+
 ## B05 known blocker
 
 B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.
