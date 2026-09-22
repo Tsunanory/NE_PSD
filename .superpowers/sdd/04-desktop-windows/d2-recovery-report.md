@@ -7,7 +7,7 @@ Branch: `build/desktop`
 
 - Starting HEAD: `31149ec84792191ff80b292d15c1848c32340717`
 - Starting status: only the three preserved documentation files were modified.
-- Final implementation HEAD: recorded in the handoff commit.
+- Final implementation HEAD: `3d2e5771ee94868483c7c8617e457902ccd2c3c9`.
 
 ## RED/GREEN
 
@@ -27,7 +27,7 @@ Added synthetic inspection/qualification validation, structural selector and var
 
 ## Changed paths
 
-`apps/desktop/`, `tests/desktop/`, `docs/desktop/`, and this report only. No root manifests, lockfiles, contracts, config, A/B/C paths, or preserved documentation files were changed.
+`apps/desktop/`, `tests/desktop/`, `docs/desktop/`, and this report only. Implementation commit: `3d2e5771ee94868483c7c8617e457902ccd2c3c9`. No root manifests, lockfiles, contracts, config, A/B/C paths, or preserved documentation files were changed.
 
 ## External gates
 
