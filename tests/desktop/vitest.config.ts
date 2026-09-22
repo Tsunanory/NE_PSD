@@ -7,7 +7,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export default defineConfig({
   root: repositoryRoot,
   test: {
-    include: ['tests/desktop/**/*.test.ts'],
+    include: ['tests/desktop/**/*.test.{ts,tsx}'],
     exclude: ['tests/desktop/**/*.e2e.test.ts'],
     environment: 'node'
   }
