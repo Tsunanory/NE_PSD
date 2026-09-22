@@ -14,11 +14,12 @@ const migrationDirectory = join(dirname(fileURLToPath(import.meta.url)), 'migrat
 const MIGRATIONS = [
   { version: 1, sql: readFileSync(join(migrationDirectory, '001-initial.sql'), 'utf8') },
   { version: 2, sql: readFileSync(join(migrationDirectory, '002-attempt-foreign-keys.sql'), 'utf8') },
+  { version: 3, sql: readFileSync(join(migrationDirectory, '003-qualified-profile.sql'), 'utf8') },
 ];
 
 export type ReviewRecord = { reviewId: string; jobId: string; assetId: string; attempt: number; payload: unknown };
 export type PublicationRecord = { publicationId: string; jobId: string; assetId: string; attempt: number; transactionKey: string; path: string; manifest?: unknown };
-export type QualificationRecord = { qualificationId: string; profileId: string; profileSha256: string; evidence: unknown; profile?: unknown };
+export type QualificationRecord = { qualificationId: string; profileId: string; profileSha256: string; evidence: unknown; profile: unknown };
 
 export class JobRepository {
   readonly db: Sqlite;
@@ -45,8 +46,11 @@ export class JobRepository {
 
   createJob(spec: JobSpec, parentJobId: string | null = null): void {
     if (spec.profile.profileSha256 !== sha256Json(spec.profile, { excludeKeys: ['profileSha256'] })) throw Object.assign(new Error('template profile digest mismatch'), { code: 'PROFILE_DIGEST_MISMATCH' });
-    const qualification = this.db.prepare('SELECT profile_id,profile_sha256 FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string } | undefined;
+    const qualification = this.db.prepare('SELECT profile_id,profile_sha256,profile_json FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string; profile_json: string | null } | undefined;
     if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
+    if (!qualification.profile_json) throw Object.assign(new Error('sealed profile content is required'), { code: 'QUALIFICATION_UNSEALED' });
+    const sealed = TemplateProfileSchema.safeParse(JSON.parse(qualification.profile_json));
+    if (!sealed.success || sealed.data.profileId !== qualification.profile_id || sealed.data.profileSha256 !== qualification.profile_sha256 || sha256Json(sealed.data, { excludeKeys: ['profileSha256'] }) !== qualification.profile_sha256) throw Object.assign(new Error('persisted qualification profile is invalid'), { code: 'QUALIFICATION_MISMATCH' });
     if (qualification.profile_id !== spec.profile.profileId || qualification.profile_sha256 !== spec.profile.profileSha256) throw Object.assign(new Error('template qualification does not match profile'), { code: 'QUALIFICATION_MISMATCH' });
     const now = new Date().toISOString();
     this.db.transaction(() => {
@@ -110,13 +114,11 @@ export class JobRepository {
   recordReview(record: ReviewRecord): void { this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
   recordPublication(record: PublicationRecord): void { this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, record.transactionKey, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString()); }
   recordQualification(record: QualificationRecord): void {
-    if (record.profile !== undefined) {
-      const profile = TemplateProfileSchema.safeParse(record.profile);
-      if (!profile.success || profile.data.profileId !== record.profileId || profile.data.profileSha256 !== record.profileSha256 || sha256Json(profile.data, { excludeKeys: ['profileSha256'] }) !== record.profileSha256) throw Object.assign(new Error('qualification profile digest mismatch'), { code: 'QUALIFICATION_MISMATCH' });
-    }
-    this.db.prepare('INSERT INTO qualifications(qualification_id,profile_id,profile_sha256,evidence_json,created_at) VALUES(?,?,?,?,?)').run(record.qualificationId, record.profileId, record.profileSha256, JSON.stringify(record.evidence), new Date().toISOString());
+    const profile = TemplateProfileSchema.safeParse(record.profile);
+    if (!profile.success || profile.data.profileId !== record.profileId || profile.data.profileSha256 !== record.profileSha256 || sha256Json(profile.data, { excludeKeys: ['profileSha256'] }) !== record.profileSha256) throw Object.assign(new Error('qualification profile digest mismatch'), { code: 'QUALIFICATION_MISMATCH' });
+    this.db.prepare('INSERT INTO qualifications(qualification_id,profile_id,profile_sha256,evidence_json,profile_json,created_at) VALUES(?,?,?,?,?,?)').run(record.qualificationId, record.profileId, record.profileSha256, JSON.stringify(record.evidence), JSON.stringify(profile.data), new Date().toISOString());
   }
-  getQualification(qualificationId: string): QualificationRecord | null { const row = this.db.prepare('SELECT qualification_id AS qualificationId,profile_id AS profileId,profile_sha256 AS profileSha256,evidence_json FROM qualifications WHERE qualification_id=?').get(qualificationId) as ({ qualificationId: string; profileId: string; profileSha256: string; evidence_json: string } | undefined); return row ? { qualificationId: row.qualificationId, profileId: row.profileId, profileSha256: row.profileSha256, evidence: JSON.parse(row.evidence_json) } : null; }
+  getQualification(qualificationId: string): QualificationRecord | null { const row = this.db.prepare('SELECT qualification_id AS qualificationId,profile_id AS profileId,profile_sha256 AS profileSha256,evidence_json,profile_json FROM qualifications WHERE qualification_id=?').get(qualificationId) as ({ qualificationId: string; profileId: string; profileSha256: string; evidence_json: string; profile_json: string | null } | undefined); return row && row.profile_json ? { qualificationId: row.qualificationId, profileId: row.profileId, profileSha256: row.profileSha256, evidence: JSON.parse(row.evidence_json), profile: JSON.parse(row.profile_json) } : null; }
 
   requestPause(jobId: string): void { this.db.prepare("UPDATE jobs SET state='pausing',requested_control='pause',updated_at=? WHERE job_id=? AND state IN ('ready','running')").run(new Date().toISOString(), jobId); }
   pause(jobId: string): void { this.requestPause(jobId); }

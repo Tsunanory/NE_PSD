@@ -22,7 +22,7 @@ const spec = (jobId = 'job-1'): JobSpec => {
 };
 
 describe('durable repository', () => {
-  const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' } }); repository.createJob(value); };
+  const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile }); repository.createJob(value); };
   it('migrates, reopens, snapshots from rows, and increments event sequence per job', async () => {
     expect(existsSync(join(process.cwd(), 'packages/core/dist/migrations/001-initial.sql'))).toBe(true);
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-db-')), 'state.sqlite');
@@ -48,8 +48,9 @@ describe('durable repository', () => {
     expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
     repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
     repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/published' });
-    repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile-2', profileSha256: 'b'.repeat(64), evidence: { path: 'evidence' } });
-    expect(repository.getQualification('qualification-1')?.profileSha256).toBe('b'.repeat(64));
+    const extra = spec('extra').profile; extra.profileId = 'profile-2'; extra.qualificationId = 'qualification-1'; extra.profileSha256 = sha256Json(extra, { excludeKeys: ['profileSha256'] });
+    repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile-2', profileSha256: extra.profileSha256, evidence: { path: 'evidence' }, profile: extra });
+    expect(repository.getQualification('qualification-1')?.profileSha256).toBe(extra.profileSha256);
     expect(() => repository.recordPublication({ publicationId: 'publication-2', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/other' })).toThrow();
     repository.close();
   });
@@ -177,8 +178,15 @@ describe('durable repository', () => {
     const repository = new JobRepository(db);
     const value = spec('tampered-profile');
     value.profile.template.relativePath = 'tampered.psd';
-    repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'caller' } });
-    expect(() => repository.createJob(value)).toThrowError(/profile digest/i);
+    expect(() => repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'caller' }, profile: value.profile })).toThrowError(/profile digest/i);
+    repository.close();
+  });
+
+  it('rejects a qualification without persisted sealed profile content', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-unsealed-qualification-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('unsealed-qualification');
+    expect(() => repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'caller' } })).toThrowError(/profile digest/i);
     repository.close();
   });
 
