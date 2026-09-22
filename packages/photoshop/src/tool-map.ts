@@ -74,7 +74,7 @@ function validateSemantics(binding: QualifiedToolBinding): void {
     if (!semantics.renderingIntent) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export binding must qualify rendering intent');
     const quality = semantics.qualityField ?? 'quality';
     const schema = properties[quality] as JsonSchema | undefined;
-    if (semantics.qualityUnit === '1-100' && (!schema || !(binding.inputSchema.required ?? []).includes(quality) || schema.type !== 'number' || schema.minimum !== 1 || schema.maximum !== 100)) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export schema does not prove quality units 1..100');
+    if (semantics.qualityUnit === '1-100' && (!schema || !(binding.inputSchema.required ?? []).includes(quality) || schema.type !== 'integer' || schema.minimum !== 1 || schema.maximum !== 100)) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export schema does not prove integer quality units 1..100');
     if (semantics.qualityUnit === '0-12') throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'backend quality units are not the shared 1..100 contract');
     if (semantics.formats.some((format) => !['jpeg', 'png'].includes(format))) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export schema contains an unsupported format');
   }

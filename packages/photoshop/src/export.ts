@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import sharp, { type Metadata } from 'sharp';
 import { VariantArtifactSchema, type OutputSpec, type VariantArtifact } from '@ne-psd/contracts';
@@ -11,7 +11,7 @@ export type ExportErrorCode =
   | 'EXPORT_CAPABILITY_MISSING' | 'EXPORT_POLICY_INVALID' | 'MUTATION_UNACKNOWLEDGED'
   | 'VISIBILITY_INVALID' | 'EXPORT_UNACKNOWLEDGED' | 'EXPORT_PATH_INVALID'
   | 'EXPORT_PATH_MISMATCH' | 'OUTPUT_EXISTS' | 'FILE_INVALID' | 'QUALITY_UNIT_MISMATCH'
-  | 'DISPOSABLE_CLEANUP_UNACKNOWLEDGED';
+  | 'DISPOSABLE_CLEANUP_UNACKNOWLEDGED' | 'BUNDLE_ROOT_INVALID';
 
 export class ExportError extends Error {
   readonly name = 'ExportError';
@@ -43,7 +43,7 @@ export type ExportAdapter = {
   showVariant: (variantId: ExportVariantId) => Promise<unknown>;
   readVisibility: () => Promise<unknown>;
   prepareExport: (input: { output: OutputSpec; alphaPolicy: AlphaPolicy; background?: Rgb }) => Promise<unknown>;
-  exportVariant: (input: { variantId: ExportVariantId; destination: string; format: 'jpeg' | 'png'; quality?: number; colorSpace: 'sRGB' }) => Promise<unknown>;
+  exportVariant: (input: { variantId: ExportVariantId; destination: string; format: 'jpeg' | 'png'; quality?: number; colorSpace: 'sRGB'; background?: Rgb }) => Promise<unknown>;
   cleanupDisposable: (documentId: string) => Promise<unknown>;
 };
 
@@ -52,10 +52,12 @@ export type AlphaPolicy = 'preserve' | 'opaque';
 export type QualityEvidence = { unit: '1-100' | '0-12' };
 export type ExportOptions = {
   bundleRoot: string;
+  approvedBundleRoot: string;
   output: OutputSpec;
   adapter: ExportAdapter;
   alphaPolicy: AlphaPolicy;
   jpegBackground?: Rgb;
+  renderingIntent: ExportPreparation['renderingIntent'];
   qualityEvidence?: QualityEvidence;
   signal?: AbortSignal;
 };
@@ -121,7 +123,9 @@ function isSrgb(metadata: Metadata): boolean {
   return metadata.hasProfile === true && metadata.space === 'srgb' && Boolean(icc);
 }
 
-async function inspectFile(path: string, output: OutputSpec, alphaPolicy: AlphaPolicy): Promise<{ bytes: number; width: number; height: number; format: 'jpeg' | 'png' }> {
+function closeTo(actual: number, expected: number, tolerance = 18): boolean { return Math.abs(actual - expected) <= tolerance; }
+
+async function inspectFile(path: string, output: OutputSpec, alphaPolicy: AlphaPolicy, jpegBackground?: Rgb): Promise<{ bytes: number; width: number; height: number; format: 'jpeg' | 'png' }> {
   let metadata: Metadata;
   try { metadata = await sharp(path, { failOn: 'error' }).metadata(); } catch (error) { throw new ExportError('FILE_INVALID', `unable to decode exported file: ${error instanceof Error ? error.message : 'decode failed'}`); }
   const format = metadata.format as string;
@@ -131,6 +135,14 @@ async function inspectFile(path: string, output: OutputSpec, alphaPolicy: AlphaP
   try {
     const decoded = await sharp(path, { failOn: 'error' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     if (decoded.info.width !== output.width || decoded.info.height !== output.height || decoded.data.byteLength === 0) throw new Error('pixel decode mismatch');
+    if (output.format === 'png' && alphaPolicy === 'opaque' && Array.from(decoded.data).some((value, index) => index % 4 === 3 && value !== 255)) throw new Error('PNG output contains transparency under opaque policy');
+    if (output.format === 'jpeg' && jpegBackground) {
+      const points = [[0, 0], [decoded.info.width - 1, 0], [0, decoded.info.height - 1], [decoded.info.width - 1, decoded.info.height - 1]] as const;
+      for (const [x, y] of points) {
+        const offset = (y * decoded.info.width + x) * 4;
+        if (!closeTo(decoded.data[offset]!, jpegBackground.r) || !closeTo(decoded.data[offset + 1]!, jpegBackground.g) || !closeTo(decoded.data[offset + 2]!, jpegBackground.b)) throw new Error('JPEG matte does not match decoded background pixels');
+      }
+    }
   } catch (error) { if (error instanceof ExportError) throw error; throw new ExportError('FILE_INVALID', `export has unreadable pixels: ${error instanceof Error ? error.message : 'decode failed'}`); }
   const bytes = (await lstat(path)).size;
   if (!Number.isInteger(bytes) || bytes <= 0) throw new ExportError('FILE_INVALID', 'export is empty');
@@ -144,6 +156,22 @@ function validatePolicy(options: ExportOptions): void {
   if (output.format === 'jpeg' && (alphaPolicy !== 'opaque' || !options.jpegBackground || ![options.jpegBackground.r, options.jpegBackground.g, options.jpegBackground.b].every((n) => Number.isInteger(n) && n >= 0 && n <= 255))) throw new ExportError('EXPORT_POLICY_INVALID', 'JPEG requires an explicit opaque background policy');
   if (output.format === 'png' && alphaPolicy !== 'preserve' && alphaPolicy !== 'opaque') throw new ExportError('EXPORT_POLICY_INVALID', 'PNG alpha policy is not qualified');
   if (output.format === 'jpeg' && !options.qualityEvidence) throw new ExportError('QUALITY_UNIT_MISMATCH', 'JPEG quality-unit evidence is missing');
+  if (!options.renderingIntent) throw new ExportError('EXPORT_POLICY_INVALID', 'rendering intent policy is missing');
+}
+
+async function validateBundleRoot(options: ExportOptions): Promise<void> {
+  if (!isAbsolute(options.bundleRoot) || !isAbsolute(options.approvedBundleRoot)) throw new ExportError('BUNDLE_ROOT_INVALID', 'bundle roots must be absolute canonical paths');
+  let actual: string;
+  let approved: string;
+  try {
+    const [actualStat, approvedStat] = await Promise.all([lstat(options.bundleRoot), lstat(options.approvedBundleRoot)]);
+    if (actualStat.isSymbolicLink() || approvedStat.isSymbolicLink()) throw new ExportError('BUNDLE_ROOT_INVALID', 'bundle roots may not be symlinks');
+    [actual, approved] = await Promise.all([realpath(options.bundleRoot), realpath(options.approvedBundleRoot)]);
+  } catch (error) {
+    if (error instanceof ExportError) throw error;
+    throw new ExportError('BUNDLE_ROOT_INVALID', `bundle root is not an existing canonical directory: ${error instanceof Error ? error.message : 'unavailable'}`);
+  }
+  if (actual !== approved) throw new ExportError('BUNDLE_ROOT_INVALID', 'bundle root is outside the approved canonical job bundle root');
 }
 
 async function visibility(options: ExportOptions, variantId: ExportVariantId, evidencePath: string): Promise<VisibilityEvidence> {
@@ -164,14 +192,17 @@ async function visibility(options: ExportOptions, variantId: ExportVariantId, ev
 
 export async function exportVariants(options: ExportOptions): Promise<ExportResult> {
   validatePolicy(options);
-  const preparation = await options.adapter.prepareExport({ output: options.output, alphaPolicy: options.alphaPolicy, ...(options.jpegBackground ? { background: options.jpegBackground } : {}) });
-  if (!preparation || typeof preparation !== 'object' || (preparation as { acknowledged?: unknown }).acknowledged !== true) throw new ExportError('MUTATION_UNACKNOWLEDGED', 'export preparation was not acknowledged');
-  const prepared = preparation as ExportPreparation;
-  if (prepared.disposable !== true || prepared.convertedPixels !== true || prepared.mode !== 'RGB' || prepared.bitDepth !== 8 || prepared.embeddedProfile !== 'sRGB' || (options.output.format === 'jpeg' && (prepared.flattened !== true || prepared.alpha !== 'opaque')) || (options.output.format === 'png' && prepared.alpha !== options.alphaPolicy)) throw new ExportError('EXPORT_POLICY_INVALID', 'export preparation does not prove the qualified color/alpha policy');
+  await validateBundleRoot(options);
   const artifacts: VariantArtifact[] = [];
   const visibilityEvidence: VisibilityEvidence[] = [];
   let cleanupResult: { acknowledged: true; documentId: string } | undefined;
+  let preparedDocumentId: string | undefined;
   try {
+    const preparation = await options.adapter.prepareExport({ output: options.output, alphaPolicy: options.alphaPolicy, ...(options.jpegBackground ? { background: options.jpegBackground } : {}) });
+    if (preparation && typeof preparation === 'object' && typeof (preparation as { documentId?: unknown }).documentId === 'string') preparedDocumentId = (preparation as { documentId: string }).documentId;
+    if (!preparation || typeof preparation !== 'object' || (preparation as { acknowledged?: unknown }).acknowledged !== true) throw new ExportError('MUTATION_UNACKNOWLEDGED', 'export preparation was not acknowledged');
+    const prepared = preparation as ExportPreparation;
+    if (prepared.disposable !== true || prepared.convertedPixels !== true || prepared.mode !== 'RGB' || prepared.bitDepth !== 8 || prepared.embeddedProfile !== 'sRGB' || prepared.renderingIntent !== options.renderingIntent || (options.output.format === 'jpeg' && (prepared.flattened !== true || prepared.alpha !== 'opaque')) || (options.output.format === 'png' && prepared.alpha !== options.alphaPolicy)) throw new ExportError('EXPORT_POLICY_INVALID', 'export preparation does not prove the qualified color/alpha/intent policy');
     for (const variantId of EXPORT_VARIANT_IDS) {
       checkpoint(options.signal);
       const restored = await options.adapter.restoreQualifiedState();
@@ -184,20 +215,22 @@ export async function exportVariants(options: ExportOptions): Promise<ExportResu
       await writeFile(evidenceAbs, JSON.stringify(evidence));
       visibilityEvidence.push(evidence);
       const quality = options.output.format === 'jpeg' ? mapExportQuality(options.output.quality, options.qualityEvidence!) : undefined;
-      const exported = await options.adapter.exportVariant({ variantId, destination, format: options.output.format, ...(quality === undefined ? {} : { quality }), colorSpace: 'sRGB' });
+      const exported = await options.adapter.exportVariant({ variantId, destination, format: options.output.format, ...(quality === undefined ? {} : { quality }), colorSpace: 'sRGB', ...(options.jpegBackground ? { background: options.jpegBackground } : {}) });
       if (!exported || typeof exported !== 'object' || (exported as { acknowledged?: unknown }).acknowledged !== true) throw new ExportError('EXPORT_UNACKNOWLEDGED', `export ${variantId} was not acknowledged`);
       const reported = (exported as { path?: unknown }).path;
       if (typeof reported !== 'string' || resolve(options.bundleRoot, reported) !== destination) throw new ExportError('EXPORT_PATH_MISMATCH', `export ${variantId} returned a mismatched path`);
       await assertNoSymlink(options.bundleRoot, destination);
-      const decoded = await inspectFile(destination, options.output, options.alphaPolicy);
+      const decoded = await inspectFile(destination, options.output, options.alphaPolicy, options.jpegBackground);
       const bytes = await readFile(destination);
       const artifact: VariantArtifact = VariantArtifactSchema.parse({ variantId, path: relativePath(options.bundleRoot, destination), sha256: createHash('sha256').update(bytes).digest('hex'), bytes: decoded.bytes, width: decoded.width, height: decoded.height, format: decoded.format, colorSpace: 'sRGB' });
       artifacts.push(artifact);
     }
   } finally {
-    const cleanup = await options.adapter.cleanupDisposable(prepared.documentId);
-    if (!acknowledged(cleanup)) throw new ExportError('DISPOSABLE_CLEANUP_UNACKNOWLEDGED', 'disposable export document cleanup was not acknowledged');
-    cleanupResult = { acknowledged: true, documentId: prepared.documentId };
+    if (preparedDocumentId) {
+      const cleanup = await options.adapter.cleanupDisposable(preparedDocumentId);
+      if (!acknowledged(cleanup)) throw new ExportError('DISPOSABLE_CLEANUP_UNACKNOWLEDGED', 'disposable export document cleanup was not acknowledged');
+      cleanupResult = { acknowledged: true, documentId: preparedDocumentId };
+    }
   }
   if (artifacts.length !== 3 || visibilityEvidence.length !== 3 || !cleanupResult) throw new ExportError('FILE_INVALID', 'three verified artifacts were not produced');
   return { artifacts: artifacts as [VariantArtifact, VariantArtifact, VariantArtifact], visibility: visibilityEvidence as [VisibilityEvidence, VisibilityEvidence, VisibilityEvidence], cleanup: cleanupResult };
