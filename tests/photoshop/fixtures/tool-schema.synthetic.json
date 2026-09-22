@@ -1,0 +1,21 @@
+{
+  "fixture": "B02 synthetic tools/list; not upstream evidence",
+  "tools": [
+    {
+      "name": "fixture_scale",
+      "description": "Synthetic test-only scale primitive",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "percent": { "type": "number" } },
+        "required": ["percent"],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": { "ok": { "type": "boolean" } },
+        "required": ["ok"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
