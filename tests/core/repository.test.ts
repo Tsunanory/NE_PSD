@@ -16,11 +16,12 @@ const spec = (jobId = 'job-1'): JobSpec => ({
 });
 
 describe('durable repository', () => {
+  const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' } }); repository.createJob(value); };
   it('migrates, reopens, snapshots from rows, and increments event sequence per job', async () => {
     expect(existsSync(join(process.cwd(), 'packages/core/dist/migrations/001-initial.sql'))).toBe(true);
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-db-')), 'state.sqlite');
     const first = new JobRepository(db);
-    first.createJob(spec());
+    createQualified(first, spec());
     first.transition('asset-1', 'rendering');
     const event = first.appendEvent('job-1', 'assetStatus');
     expect(event.sequence).toBe(1);
@@ -36,13 +37,13 @@ describe('durable repository', () => {
   it('persists attempts, reviews, publications, and qualifications with transaction uniqueness', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-records-')), 'state.sqlite');
     const repository = new JobRepository(db);
-    repository.createJob(spec('records'));
+    createQualified(repository, spec('records'));
     repository.transition('asset-1', 'rendering');
     expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
     repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
     repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/published' });
-    repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile', profileSha256: hash, evidence: { path: 'evidence' } });
-    expect(repository.getQualification('qualification-1')?.profileSha256).toBe(hash);
+    repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile-2', profileSha256: 'b'.repeat(64), evidence: { path: 'evidence' } });
+    expect(repository.getQualification('qualification-1')?.profileSha256).toBe('b'.repeat(64));
     expect(() => repository.recordPublication({ publicationId: 'publication-2', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/other' })).toThrow();
     repository.close();
   });
@@ -50,7 +51,7 @@ describe('durable repository', () => {
   it('keeps pause and cancel requests pending until safe-boundary acknowledgement', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-control-')), 'state.sqlite');
     const repository = new JobRepository(db);
-    repository.createJob(spec('control'));
+    createQualified(repository, spec('control'));
     repository.transition('asset-1', 'rendering');
     repository.pause('control');
     expect(repository.controlState('control')).toBe('pause');
@@ -70,7 +71,7 @@ describe('durable repository', () => {
     const repository = new JobRepository(db);
     const job = spec('precedence');
     job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
-    repository.createJob(job);
+    createQualified(repository, job);
     repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
     repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'blocked', { code: 'BLOCKED', category: 'review', message: 'blocked', retryable: false, evidencePaths: [] });
     expect(repository.snapshot('precedence').state).toBe('blocked');
@@ -82,10 +83,17 @@ describe('durable repository', () => {
     const repository = new JobRepository(db);
     const job = spec('mixed-terminal');
     job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
-    repository.createJob(job);
+    createQualified(repository, job);
     repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'reviewing'); repository.transition('asset-1', 'readyToCommit'); repository.transition('asset-1', 'complete');
     repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
     expect(repository.snapshot('mixed-terminal').state).toBe('failed');
+    repository.close();
+  });
+
+  it('rejects a job whose template qualification lookup is missing', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-unqualified-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    expect(() => repository.createJob(spec('unqualified'))).toThrowError(/qualification/i);
     repository.close();
   });
 });

@@ -31,6 +31,9 @@ export class JobRepository {
   migrate(): void { this.db.exec(MIGRATION); }
 
   createJob(spec: JobSpec, parentJobId: string | null = null): void {
+    const qualification = this.db.prepare('SELECT profile_id,profile_sha256 FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string } | undefined;
+    if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
+    if (qualification.profile_id !== spec.profile.profileId || qualification.profile_sha256 !== spec.profile.profileSha256) throw Object.assign(new Error('template qualification does not match profile'), { code: 'QUALIFICATION_MISMATCH' });
     const now = new Date().toISOString();
     this.db.transaction(() => {
       this.db.prepare('INSERT INTO jobs(job_id,spec_json,state,schema_version,contract_version,parent_job_id,requested_control,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(spec.jobId, JSON.stringify(spec), 'ready', spec.schemaVersion, 1, parentJobId, null, now, now);
