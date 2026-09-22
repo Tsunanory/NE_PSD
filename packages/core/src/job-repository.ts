@@ -85,6 +85,11 @@ export class JobRepository {
   private jobControl(jobId: string): string | null {
     return (this.db.prepare('SELECT requested_control FROM jobs WHERE job_id=?').get(jobId) as { requested_control: string | null } | undefined)?.requested_control ?? null;
   }
+  private assertCurrentAttempt(jobId: string, assetId: string, attempt: number): void {
+    const row = this.db.prepare('SELECT attempt FROM assets WHERE job_id=? AND asset_id=?').get(jobId, assetId) as { attempt: number } | undefined;
+    if (!row) throw new Error(`unknown asset: ${jobId}/${assetId}`);
+    if (row.attempt !== attempt) throw Object.assign(new Error('record does not match the current attempt'), { code: 'CURRENT_ATTEMPT_MISMATCH' });
+  }
 
   transition(jobId: string, assetId: string, to: AssetStatus, error?: DomainError): void {
     this.db.transaction(() => {
@@ -139,8 +144,9 @@ export class JobRepository {
     } catch { throw new Error('persisted event JSON is malformed or invalid'); }
   }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
-  recordReview(record: ReviewRecord): void { this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
+  recordReview(record: ReviewRecord): void { this.assertCurrentAttempt(record.jobId, record.assetId, record.attempt); this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
   recordPublication(record: PublicationRecord): void {
+    this.assertCurrentAttempt(record.jobId, record.assetId, record.attempt);
     const job = this.db.prepare('SELECT output_root_path AS root,output_root_identity AS identity FROM jobs WHERE job_id=?').get(record.jobId) as { root: string | null; identity: string | null } | undefined;
     const expected = `${record.jobId}:${record.assetId}:${record.attempt}`;
     let confined = false;
@@ -158,8 +164,8 @@ export class JobRepository {
   requestPause(jobId: string): void { this.db.prepare("UPDATE jobs SET state='pausing',requested_control='pause',updated_at=? WHERE job_id=? AND state IN ('ready','running')").run(new Date().toISOString(), jobId); }
   pause(jobId: string): void { this.requestPause(jobId); }
   controlState(jobId: string): string | null { return this.jobControl(jobId); }
-  acknowledgePause(jobId: string): void { this.db.prepare("UPDATE jobs SET state='paused',requested_control=NULL,updated_at=? WHERE job_id=? AND requested_control='pause'").run(new Date().toISOString(), jobId); }
-  resume(jobId: string): void { this.db.prepare("UPDATE jobs SET state='running',requested_control=NULL,updated_at=? WHERE job_id=? AND state IN ('pausing','paused')").run(new Date().toISOString(), jobId); }
+  acknowledgePause(jobId: string): void { this.db.transaction(() => { const derived = this.deriveJobState(jobId); const state = ['completed', 'failed', 'blocked', 'cancelled'].includes(derived) ? derived : 'paused'; this.db.prepare("UPDATE jobs SET state=?,requested_control=NULL,updated_at=? WHERE job_id=? AND requested_control='pause'").run(state, new Date().toISOString(), jobId); })(); }
+  resume(jobId: string): void { this.db.transaction(() => { const derived = this.deriveJobState(jobId); const state = ['completed', 'failed', 'blocked', 'cancelled'].includes(derived) ? derived : 'running'; this.db.prepare("UPDATE jobs SET state=?,requested_control=NULL,updated_at=? WHERE job_id=? AND state IN ('pausing','paused')").run(state, new Date().toISOString(), jobId); })(); }
   requestCancel(jobId: string): void { this.db.prepare("UPDATE jobs SET requested_control='cancel',updated_at=? WHERE job_id=? AND state NOT IN ('completed','failed','blocked','cancelled')").run(new Date().toISOString(), jobId); }
   cancel(jobId: string): void { this.requestCancel(jobId); }
   acknowledgeCancel(jobId: string): void { this.db.transaction(() => { this.db.prepare("UPDATE assets SET status='cancelled' WHERE job_id=? AND status NOT IN ('complete','cancelled')").run(jobId); this.db.prepare("UPDATE jobs SET state='cancelled',requested_control=NULL,updated_at=? WHERE job_id=? AND requested_control='cancel'").run(new Date().toISOString(), jobId); })(); }

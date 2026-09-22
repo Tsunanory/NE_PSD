@@ -80,6 +80,19 @@ describe('durable repository', () => {
     reopenedAgain.close();
   });
 
+  it('rejects review and publication records for a non-current attempt', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-stale-attempt-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    createQualified(repository, spec('stale-attempt'));
+    repository.transition('stale-attempt', 'asset-1', 'rendering');
+    repository.transition('stale-attempt', 'asset-1', 'failed', { code: 'FAILED-1', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('stale-attempt', 'asset-1', 'queued');
+    repository.transition('stale-attempt', 'asset-1', 'rendering');
+    expect(() => repository.recordReview({ reviewId: 'stale-review', jobId: 'stale-attempt', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } })).toThrowError(/current attempt/i);
+    expect(() => repository.recordPublication({ publicationId: 'stale-publication', jobId: 'stale-attempt', assetId: 'asset-1', attempt: 1, transactionKey: 'stale-attempt:asset-1:1', path: '/tmp/ne-psd-out/stale' })).toThrowError(/current attempt/i);
+    repository.close();
+  });
+
   it('upgrades the legacy attempt foreign keys without losing persisted rows', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-legacy-migration-')), 'state.sqlite');
     const legacy = new Database(db);
@@ -131,6 +144,22 @@ describe('durable repository', () => {
     repository.close();
   });
 
+  it('does not resume a terminal job into a nonterminal aggregate state', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-terminal-control-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    createQualified(repository, spec('terminal-control'));
+    repository.transition('terminal-control', 'asset-1', 'rendering');
+    repository.pause('terminal-control');
+    repository.transition('terminal-control', 'asset-1', 'reviewing');
+    repository.transition('terminal-control', 'asset-1', 'readyToCommit');
+    repository.transition('terminal-control', 'asset-1', 'complete');
+    repository.acknowledgePause('terminal-control');
+    expect(repository.snapshot('terminal-control').state).toBe('completed');
+    repository.resume('terminal-control');
+    expect(repository.snapshot('terminal-control').state).toBe('completed');
+    repository.close();
+  });
+
   it('uses failed then blocked precedence for mixed terminal assets', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-precedence-')), 'state.sqlite');
     const repository = new JobRepository(db);
@@ -155,6 +184,19 @@ describe('durable repository', () => {
     repository.transition('attempt-ceiling', 'asset-1', 'queued');
     expect(() => repository.transition('attempt-ceiling', 'asset-1', 'rendering')).toThrowError(/attempt limit/i);
     expect(repository.attempts('attempt-ceiling', 'asset-1')).toHaveLength(2);
+    repository.close();
+  });
+
+  it('rolls back the asset transition when attempt persistence fails', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-transition-rollback-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    createQualified(repository, spec('transition-rollback'));
+    repository.transition('transition-rollback', 'asset-1', 'rendering');
+    repository.transition('transition-rollback', 'asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('transition-rollback', 'asset-1', 'queued');
+    repository.db.prepare('INSERT INTO attempts(job_id,asset_id,attempt,transaction_key,state,evidence_json,created_at) VALUES(?,?,?,?,?,?,?)').run('transition-rollback', 'asset-1', 2, 'transition-rollback:asset-1:2', 'rendering', null, new Date().toISOString());
+    expect(() => repository.transition('transition-rollback', 'asset-1', 'rendering')).toThrow();
+    expect(repository.snapshot('transition-rollback').assets[0]).toMatchObject({ status: 'queued', attempt: 1 });
     repository.close();
   });
 
