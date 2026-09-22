@@ -31,6 +31,12 @@ export function assertConfinedPath(root: string, candidate: string): string {
   return canonicalRelativePath(root, candidate);
 }
 
+export function validateOutputPathBudget(outputRoot: string, assetDirectory: string, filename: string, maxPathBytes = 240): string {
+  const candidate = resolve(outputRoot, assetDirectory, filename);
+  if (Buffer.byteLength(candidate, 'utf8') > maxPathBytes) throw new PathSafetyError('PATH_TOO_LONG', `output path length exceeds ${maxPathBytes} bytes: ${candidate}`);
+  return candidate;
+}
+
 export async function assertExistingConfinedPath(root: string, candidate: string): Promise<string> {
   const rel = assertConfinedPath(root, candidate);
   const rootReal = await realpath(root);

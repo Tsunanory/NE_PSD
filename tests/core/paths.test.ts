@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertConfinedPath, validateWindowsComponent, validateOutputRoot } from '@ne-psd/core';
+import { assertConfinedPath, validateOutputRoot, validateOutputPathBudget, validateWindowsComponent } from '@ne-psd/core';
 
 describe('Windows-safe confined paths', () => {
   it('rejects reserved names, trailing dot/space, and traversal', () => {
@@ -20,5 +20,9 @@ describe('Windows-safe confined paths', () => {
     await chmod(output, 0o555);
     await expect(validateOutputRoot(join(root, 'input'), output)).rejects.toMatchObject({ code: 'OUTPUT_NOT_WRITABLE' });
     await writeFile(join(root, 'marker'), 'ok');
+  });
+
+  it('enforces the final Windows-safe output path budget', () => {
+    expect(() => validateOutputPathBudget('/tmp/output', 'asset--abc', '1.png', 20)).toThrowError(/length/i);
   });
 });

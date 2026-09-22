@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +17,7 @@ const spec = (jobId = 'job-1'): JobSpec => ({
 
 describe('durable repository', () => {
   it('migrates, reopens, snapshots from rows, and increments event sequence per job', async () => {
+    expect(existsSync(join(process.cwd(), 'packages/core/dist/migrations/001-initial.sql'))).toBe(true);
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-db-')), 'state.sqlite');
     const first = new JobRepository(db);
     first.createJob(spec());
@@ -29,5 +31,61 @@ describe('durable repository', () => {
     expect(reopened.snapshot('job-1').complete).toBe(0);
     expect(reopened.appendEvent('job-1', 'snapshot').sequence).toBe(2);
     reopened.close();
+  });
+
+  it('persists attempts, reviews, publications, and qualifications with transaction uniqueness', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-records-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    repository.createJob(spec('records'));
+    repository.transition('asset-1', 'rendering');
+    expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
+    repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/published' });
+    repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile', profileSha256: hash, evidence: { path: 'evidence' } });
+    expect(repository.getQualification('qualification-1')?.profileSha256).toBe(hash);
+    expect(() => repository.recordPublication({ publicationId: 'publication-2', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/other' })).toThrow();
+    repository.close();
+  });
+
+  it('keeps pause and cancel requests pending until safe-boundary acknowledgement', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-control-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    repository.createJob(spec('control'));
+    repository.transition('asset-1', 'rendering');
+    repository.pause('control');
+    expect(repository.controlState('control')).toBe('pause');
+    repository.transition('asset-1', 'reviewing');
+    expect(repository.snapshot('control').assets[0]!.status).toBe('reviewing');
+    repository.acknowledgePause('control');
+    expect(repository.snapshot('control').state).toBe('paused');
+    repository.requestCancel('control');
+    expect(repository.controlState('control')).toBe('cancel');
+    repository.acknowledgeCancel('control');
+    expect(repository.snapshot('control').assets[0]!.status).toBe('cancelled');
+    repository.close();
+  });
+
+  it('uses failed then blocked precedence for mixed terminal assets', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-precedence-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const job = spec('precedence');
+    job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
+    repository.createJob(job);
+    repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'blocked', { code: 'BLOCKED', category: 'review', message: 'blocked', retryable: false, evidencePaths: [] });
+    expect(repository.snapshot('precedence').state).toBe('blocked');
+    repository.close();
+  });
+
+  it('does not expose ready for complete plus failed terminal assets', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-mixed-terminal-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const job = spec('mixed-terminal');
+    job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
+    repository.createJob(job);
+    repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'reviewing'); repository.transition('asset-1', 'readyToCommit'); repository.transition('asset-1', 'complete');
+    repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    expect(repository.snapshot('mixed-terminal').state).toBe('failed');
+    repository.close();
   });
 });

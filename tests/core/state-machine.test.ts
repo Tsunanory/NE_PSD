@@ -3,6 +3,7 @@ import { assertAssetTransition, JobRepository, StateMachineError } from '@ne-psd
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assignAssetIds } from '@ne-psd/core';
 
 describe('state machine', () => {
   it('rejects publishing before review and allows only bounded transitions', () => {
@@ -36,5 +37,11 @@ describe('state machine', () => {
     repository.transition('asset-blocked', 'blocked', { code: 'REVIEW_WAIT', category: 'review', message: 'review unavailable', retryable: false, evidencePaths: [] });
     expect(() => repository.retryFailed('job-blocked')).toThrowError(/failed assets/i);
     repository.close();
+  });
+
+  it('allocates IDs deterministically independent of input order and rejects duplicate full identities', () => {
+    const entries = [{ relativePath: 'A/image.png', sha256: 'a'.repeat(64) }, { relativePath: 'B/image.png', sha256: 'b'.repeat(64) }];
+    expect([...assignAssetIds(entries)]).toEqual([...assignAssetIds([...entries].reverse())]);
+    expect(() => assignAssetIds([entries[0]!, entries[0]!])).toThrowError(/duplicate/i);
   });
 });

@@ -19,8 +19,10 @@ export function assetId(relativePath: string, contentSha256: string, prefixLengt
 
 export function assignAssetIds(entries: readonly { relativePath: string; sha256: string }[]): Map<string, string> {
   const identities = entries.map((entry) => ({ ...entry, identity: assetIdentity(entry.relativePath, entry.sha256) }));
+  const duplicate = new Set<string>();
+  for (const entry of identities) if (duplicate.has(entry.identity)) throw new Error(`duplicate asset identity: ${entry.relativePath}`); else duplicate.add(entry.identity);
   const result = new Map<string, string>();
-  for (const entry of identities) {
+  for (const entry of [...identities].sort((a, b) => Buffer.from(`${a.relativePath.normalize('NFC')}\0${a.identity}`).compare(Buffer.from(`${b.relativePath.normalize('NFC')}\0${b.identity}`)))) {
     let length = 12;
     let candidate = assetId(entry.relativePath, entry.sha256, length);
     while ([...result.values()].some((value) => value === candidate)) candidate = assetId(entry.relativePath, entry.sha256, length += 4);
