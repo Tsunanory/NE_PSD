@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetStatus, DomainError, JobEvent, JobSnapshot, JobSpec } from '@ne-psd/contracts';
-import { TemplateProfileSchema, sha256Json } from '@ne-psd/contracts';
+import { TemplateProfileSchema, sha256Json, validateJobSpec } from '@ne-psd/contracts';
 import { makeEvent, type EventKind } from './events.js';
 import { assertAssetTransition, assertSnapshotCounters } from './state-machine.js';
 
@@ -55,13 +55,18 @@ export class JobRepository {
     }
   }
 
-  createJob(spec: JobSpec, parentJobId: string | null = null, outputRoot?: OutputRootBinding): void {
+  createJob(input: unknown, parentJobId: string | null = null, outputRoot?: OutputRootBinding): void {
+    const parsed = validateJobSpec(input);
+    if (!parsed.success) throw Object.assign(new Error(`invalid job specification: ${parsed.error.message}`), { code: 'INVALID_JOB_SPEC' });
+    const spec = parsed.data;
     if (!outputRoot || outputRoot.rootId !== spec.outputRootId || !isAbsolute(outputRoot.canonicalRoot) || outputRoot.canonicalRootIdentity !== filesystemIdentity(outputRoot.canonicalRoot) || realpathSync(outputRoot.canonicalRoot) !== outputRoot.canonicalRoot) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
     if (spec.profile.profileSha256 !== sha256Json(spec.profile, { excludeKeys: ['profileSha256'] })) throw Object.assign(new Error('template profile digest mismatch'), { code: 'PROFILE_DIGEST_MISMATCH' });
     const qualification = this.db.prepare('SELECT profile_id,profile_sha256,profile_json FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string; profile_json: string | null } | undefined;
     if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
     if (!qualification.profile_json) throw Object.assign(new Error('sealed profile content is required'), { code: 'QUALIFICATION_UNSEALED' });
-    const sealed = TemplateProfileSchema.safeParse(JSON.parse(qualification.profile_json));
+    let persistedProfile: unknown;
+    try { persistedProfile = JSON.parse(qualification.profile_json); } catch { throw Object.assign(new Error('persisted qualification profile is malformed'), { code: 'QUALIFICATION_MISMATCH' }); }
+    const sealed = TemplateProfileSchema.safeParse(persistedProfile);
     if (!sealed.success || sealed.data.profileId !== qualification.profile_id || sealed.data.profileSha256 !== qualification.profile_sha256 || sha256Json(sealed.data, { excludeKeys: ['profileSha256'] }) !== qualification.profile_sha256) throw Object.assign(new Error('persisted qualification profile is invalid'), { code: 'QUALIFICATION_MISMATCH' });
     if (qualification.profile_id !== spec.profile.profileId || qualification.profile_sha256 !== spec.profile.profileSha256) throw Object.assign(new Error('template qualification does not match profile'), { code: 'QUALIFICATION_MISMATCH' });
     const now = new Date().toISOString();
@@ -108,7 +113,9 @@ export class JobRepository {
     const job = this.db.prepare('SELECT state FROM jobs WHERE job_id=?').get(jobId) as { state: JobSnapshot['state'] } | undefined;
     if (!job) throw new Error(`unknown job: ${jobId}`);
     const rows = this.db.prepare('SELECT asset_id,status,attempt,error_json FROM assets WHERE job_id=? ORDER BY asset_id').all(jobId) as Array<{ asset_id: string; status: AssetStatus; attempt: number; error_json: string | null }>;
-    const snapshot: JobSnapshot = { jobId, state: job.state, total: rows.length, complete: rows.filter((row) => row.status === 'complete').length, failed: rows.filter((row) => row.status === 'failed').length, blocked: rows.filter((row) => row.status === 'blocked').length, assets: rows.map((row) => ({ assetId: row.asset_id, status: row.status, attempt: row.attempt, error: row.error_json ? JSON.parse(row.error_json) as DomainError : null })) };
+    let assets: JobSnapshot['assets'];
+    try { assets = rows.map((row) => ({ assetId: row.asset_id, status: row.status, attempt: row.attempt, error: row.error_json ? JSON.parse(row.error_json) as DomainError : null })); } catch { throw new Error('persisted asset error JSON is malformed'); }
+    const snapshot: JobSnapshot = { jobId, state: job.state, total: rows.length, complete: rows.filter((row) => row.status === 'complete').length, failed: rows.filter((row) => row.status === 'failed').length, blocked: rows.filter((row) => row.status === 'blocked').length, assets };
     assertSnapshotCounters(snapshot);
     return snapshot;
   }
@@ -121,7 +128,7 @@ export class JobRepository {
       return event;
     })();
   }
-  events(jobId: string): JobEvent[] { return (this.db.prepare('SELECT event_json FROM events WHERE job_id=? ORDER BY sequence').all(jobId) as Array<{ event_json: string }>).map((row) => JSON.parse(row.event_json) as JobEvent); }
+  events(jobId: string): JobEvent[] { try { return (this.db.prepare('SELECT event_json FROM events WHERE job_id=? ORDER BY sequence').all(jobId) as Array<{ event_json: string }>).map((row) => JSON.parse(row.event_json) as JobEvent); } catch { throw new Error('persisted event JSON is malformed'); } }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
   recordReview(record: ReviewRecord): void { this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
   recordPublication(record: PublicationRecord): void {
@@ -137,7 +144,7 @@ export class JobRepository {
     if (!profile.success || profile.data.profileId !== record.profileId || profile.data.profileSha256 !== record.profileSha256 || sha256Json(profile.data, { excludeKeys: ['profileSha256'] }) !== record.profileSha256) throw Object.assign(new Error('qualification profile digest mismatch'), { code: 'QUALIFICATION_MISMATCH' });
     this.db.prepare('INSERT INTO qualifications(qualification_id,profile_id,profile_sha256,evidence_json,profile_json,created_at) VALUES(?,?,?,?,?,?)').run(record.qualificationId, record.profileId, record.profileSha256, JSON.stringify(record.evidence), JSON.stringify(profile.data), new Date().toISOString());
   }
-  getQualification(qualificationId: string): QualificationRecord | null { const row = this.db.prepare('SELECT qualification_id AS qualificationId,profile_id AS profileId,profile_sha256 AS profileSha256,evidence_json,profile_json FROM qualifications WHERE qualification_id=?').get(qualificationId) as ({ qualificationId: string; profileId: string; profileSha256: string; evidence_json: string; profile_json: string | null } | undefined); return row && row.profile_json ? { qualificationId: row.qualificationId, profileId: row.profileId, profileSha256: row.profileSha256, evidence: JSON.parse(row.evidence_json), profile: JSON.parse(row.profile_json) } : null; }
+  getQualification(qualificationId: string): QualificationRecord | null { const row = this.db.prepare('SELECT qualification_id AS qualificationId,profile_id AS profileId,profile_sha256 AS profileSha256,evidence_json,profile_json FROM qualifications WHERE qualification_id=?').get(qualificationId) as ({ qualificationId: string; profileId: string; profileSha256: string; evidence_json: string; profile_json: string | null } | undefined); if (!row || !row.profile_json) return null; try { const profile = TemplateProfileSchema.safeParse(JSON.parse(row.profile_json)); if (!profile.success || profile.data.profileId !== row.profileId || profile.data.profileSha256 !== row.profileSha256 || sha256Json(profile.data, { excludeKeys: ['profileSha256'] }) !== row.profileSha256) throw new Error('invalid persisted qualification profile'); return { qualificationId: row.qualificationId, profileId: row.profileId, profileSha256: row.profileSha256, evidence: JSON.parse(row.evidence_json), profile: profile.data }; } catch { throw Object.assign(new Error('persisted qualification JSON is malformed or invalid'), { code: 'QUALIFICATION_MISMATCH' }); } }
 
   requestPause(jobId: string): void { this.db.prepare("UPDATE jobs SET state='pausing',requested_control='pause',updated_at=? WHERE job_id=? AND state IN ('ready','running')").run(new Date().toISOString(), jobId); }
   pause(jobId: string): void { this.requestPause(jobId); }
@@ -156,7 +163,11 @@ export class JobRepository {
       const allowed = new Set(failed.map((asset) => asset.asset_id));
       const chosen = selectedAssetIds ? [...selectedAssetIds] : [...allowed];
       if (chosen.length === 0 || new Set(chosen).size !== chosen.length || chosen.some((id) => !allowed.has(id))) throw Object.assign(new Error('no valid failed assets to retry; blocked review work requires recovery'), { code: 'NO_FAILED_ASSETS' });
-      const spec = JSON.parse(source.spec_json) as JobSpec;
+      let parsedSpec: unknown;
+      try { parsedSpec = JSON.parse(source.spec_json); } catch { throw new Error('persisted job specification is malformed'); }
+      const validatedSpec = validateJobSpec(parsedSpec);
+      if (!validatedSpec.success) throw new Error('persisted job specification is invalid');
+      const spec = validatedSpec.data;
       const successor: JobSpec = { ...spec, jobId: randomUUID(), assets: spec.assets.filter((asset) => chosen.includes(asset.assetId)) };
       const root = this.db.prepare('SELECT output_root_path AS canonicalRoot,output_root_identity AS canonicalRootIdentity FROM jobs WHERE job_id=?').get(jobId) as { canonicalRoot: string | null; canonicalRootIdentity: string | null } | undefined;
       if (!root?.canonicalRoot || !root.canonicalRootIdentity) throw Object.assign(new Error('trusted output-root binding is required'), { code: 'OUTPUT_ROOT_BINDING_REQUIRED' });
@@ -164,6 +175,6 @@ export class JobRepository {
       return { jobId: successor.jobId };
     })();
   }
-  getJobSpec(jobId: string): JobSpec { const row = this.db.prepare('SELECT spec_json FROM jobs WHERE job_id=?').get(jobId) as { spec_json: string } | undefined; if (!row) throw new Error(`unknown job: ${jobId}`); return JSON.parse(row.spec_json) as JobSpec; }
+  getJobSpec(jobId: string): JobSpec { const row = this.db.prepare('SELECT spec_json FROM jobs WHERE job_id=?').get(jobId) as { spec_json: string } | undefined; if (!row) throw new Error(`unknown job: ${jobId}`); try { const parsed = validateJobSpec(JSON.parse(row.spec_json)); if (!parsed.success) throw new Error('invalid persisted job specification'); return parsed.data; } catch { throw new Error('persisted job specification is malformed or invalid'); } }
   listPublications(jobId: string): Array<{ assetId: string; path: string; transactionKey: string }> { return this.db.prepare('SELECT asset_id AS assetId,path,transaction_key AS transactionKey FROM publications WHERE job_id=? ORDER BY asset_id').all(jobId) as Array<{ assetId: string; path: string; transactionKey: string }>; }
 }

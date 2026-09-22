@@ -3,7 +3,7 @@ import { lstat, readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { assertExistingConfinedPath, assertSourceRootReadOnly, canonicalRelativePath, PathSafetyError, validateOutputPathBudget, validateWindowsComponent, validateOutputRoot } from './paths.js';
 
-export type PreflightFile = { absolutePath: string; relativePath: string; sha256: string; bytes: number; selectedAtMs: number; content: Buffer };
+export type PreflightFile = { absolutePath: string; relativePath: string; sha256: string; bytes: number; selectedAtMs: number };
 export type PreflightError = { code: string; path: string; message: string };
 export type SourceRootPolicy = (root: string) => Promise<void> | void;
 export type ByteValidatorContext = { bytes: Buffer; path: string };
@@ -37,7 +37,7 @@ export async function enumerateInputs(inputRoot: string, options: PreflightOptio
           if (!await options.psdValidator({ bytes, path: absolute })) throw new PathSafetyError('CORRUPT_IMAGE', 'qualified PSD/PSB validator rejected the file');
         } else await (options.rasterValidator ?? decodeRaster)({ bytes, path: absolute });
         await assertExistingConfinedPath(root, absolute);
-        files.push({ absolutePath: absolute, relativePath, sha256: sha256Bytes(bytes), bytes: bytes.byteLength, selectedAtMs: Date.now(), content: bytes });
+        files.push({ absolutePath: absolute, relativePath, sha256: sha256Bytes(bytes), bytes: bytes.byteLength, selectedAtMs: Date.now() });
       } catch (error) { const e = error as PathSafetyError; errors.push({ code: e.code ?? 'INVALID_INPUT', path: relativePath, message: e.message }); }
     }
   }

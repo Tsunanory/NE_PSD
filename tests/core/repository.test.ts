@@ -177,6 +177,29 @@ describe('durable repository', () => {
     repository.close();
   });
 
+  it('validates job payloads at the repository boundary', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-runtime-validation-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('runtime-invalid');
+    repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile });
+    const malformed = { ...value, maxAttempts: 3, unexpected: true } as unknown;
+    expect(() => repository.createJob(malformed, null, rootBinding())).toThrowError(/invalid job specification/i);
+    repository.close();
+  });
+
+  it('fails closed when persisted job or qualification JSON is tampered', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-persisted-json-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('persisted-json');
+    repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' }, profile: value.profile });
+    repository.createJob(value, null, rootBinding());
+    repository.db.prepare('UPDATE jobs SET spec_json=? WHERE job_id=?').run('{bad', value.jobId);
+    expect(() => repository.getJobSpec(value.jobId)).toThrowError(/persisted job specification/i);
+    repository.db.prepare('UPDATE qualifications SET evidence_json=? WHERE qualification_id=?').run('{bad', value.profile.qualificationId);
+    expect(() => repository.getQualification(value.profile.qualificationId)).toThrowError(/persisted qualification/i);
+    repository.close();
+  });
+
   it('rejects a tampered profile even when qualification strings match', async () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-profile-binding-')), 'state.sqlite');
     const repository = new JobRepository(db);
