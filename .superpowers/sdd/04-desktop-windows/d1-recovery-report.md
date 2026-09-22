@@ -7,7 +7,7 @@ Branch: `build/desktop`
 
 - Starting HEAD: `0fc4a7039ae9ae83a68440001f77f11058e8f5de`
 - Starting status: `M AGENTS.md`, `M docs/superpowers/launch/04-desktop.txt`, `M docs/superpowers/plans/2026-09-21-ne-psd/04-desktop-windows.md`
-- Final HEAD: `22ebd3ae21d4a3044f8946149f00bc247e6bf54e`
+- Final implementation HEAD: `da9c5e3097d869575d014f04ac0764e3fbd80011`
 
 ## Findings and correction
 
@@ -34,7 +34,7 @@ The focused test was intentionally run RED before editing: the old channel-union
 - `tests/desktop/ipc.test.ts`
 - `tests/desktop/window-policy.test.ts`
 
-Commit: `22ebd3ae21d4a3044f8946149f00bc247e6bf54e` (`fix(desktop): recover packaged IPC boundaries`).
+Implementation commit: `da9c5e3097d869575d014f04ac0764e3fbd80011` (`fix(desktop): recover packaged IPC boundaries`).
 
 ## Preserved and blocked gates
 
