@@ -2,6 +2,7 @@ import { foundationPackage, RenderRequestSchema, type RenderRequest } from '@ne-
 
 export type { RenderRequest } from '@ne-psd/contracts';
 export * from './types.js';
+export * from './session-lock.js';
 
 export function parseRequest(input: unknown): RenderRequest {
   const request = RenderRequestSchema.parse(input);

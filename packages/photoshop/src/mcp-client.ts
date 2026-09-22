@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { canonicalize } from '@ne-psd/contracts';
 import { buildToolMap, toolSchemaDigest, type SemanticOperation, type ToolDefinition, type ToolMapEntry } from './tool-map.js';
+import type { SessionLock } from './session-lock.js';
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
 export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall): Promise<unknown> };
@@ -33,7 +34,10 @@ function matchesSchema(value: unknown, schema: Record<string, unknown> | undefin
 export class McpClient {
   readonly traces: Trace[] = [];
   private schema?: { tools: ToolDefinition[]; digest: string };
-  constructor(private readonly options: { transport: ToolTransport; toolMap: ReadonlyMap<SemanticOperation, ToolMapEntry>; schemaDigest?: string }) {}
+  constructor(private readonly options: { transport: ToolTransport; toolMap: ReadonlyMap<SemanticOperation, ToolMapEntry>; schemaDigest?: string; sessionLock?: SessionLock }) {}
+  async runTransaction<T>(operationId: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    return this.options.sessionLock ? this.options.sessionLock.runExclusive(operationId, fn, signal) : fn();
+  }
   async listSchemaDigest(): Promise<string> {
     const listed = await this.options.transport.listTools();
     if (!Array.isArray(listed.tools) || listed.tools.some((tool) => typeof tool?.name !== 'string' || !tool.inputSchema)) throw new McpClientError('INVALID_TOOLS_LIST', 'tools/list response has invalid tool schemas');
