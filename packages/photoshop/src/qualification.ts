@@ -161,6 +161,10 @@ function validSelectorProof(proof: SelectorProof, preparedSha256: string, inspec
   if (proof.preparedSha256 !== preparedSha256 || proof.targets.length !== proposal.targets.length || proof.variants.length !== 3) return false;
   if (proof.targets.some((target) => !expected.has(target.targetCandidateId) || !targetIds.has(target.targetCandidateId) || !expected.has(target.referenceCandidateId) || (target.inputCandidateId !== null && !expected.has(target.inputCandidateId)))) return false;
   if (proof.variants.some((variant) => !expected.has(variant.candidateId))) return false;
+  const byId = new Map(inspection.candidates.map((candidate) => [candidate.candidateId, candidate.selector]));
+  const routeShape = (selector: LayerSelector | null | undefined): unknown => selector && { documentRoute: selector.documentRoute.map((path) => path.map(({ name, kind }) => ({ name, kind }))), layerPath: selector.layerPath.map(({ name, kind }) => ({ name, kind })) };
+  if (proof.targets.some((target) => !same(routeShape(target.target), routeShape(byId.get(target.targetCandidateId))) || !same(routeShape(target.reference), routeShape(byId.get(target.referenceCandidateId))) || (target.inputCandidateId !== null && !same(routeShape(target.input), routeShape(byId.get(target.inputCandidateId)))))) return false;
+  if (proof.variants.some((variant) => !same(routeShape(variant.group), routeShape(byId.get(variant.candidateId))))) return false;
   return new Set(proof.variants.map((variant) => variant.id)).size === 3;
 }
 function fileRef(path: string, sha256: string, rootId: string): FileRef { return { rootId, relativePath: `prepared/${path.split(/[\\/]/).at(-1) ?? 'template.psd'}`, sha256 }; }
@@ -191,11 +195,13 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
   if (request.inspection.unresolvedLinks.length > 0) return blocked([domainError('LINKED_SOURCE_UNISOLATED', 'inspection contains unresolved links', 'capability')], [], []);
   const adapter = options.adapter; const evidencePaths: string[] = []; const checks: Array<{ id: string; passed: boolean; evidencePath: string }> = [];
   const execute = async (): Promise<QualificationResult> => {
-    let copy: WorkingCopyResult | undefined; let transactionCleaned = false; let copyCleaned = false; let unknown = false; let originalMaster = '';
+    let copy: WorkingCopyResult | undefined; let transactionCleaned = false; let copyCleaned = false; let originalMaster = '';
     const clean = async (): Promise<void> => {
       let failure: unknown;
-      if (!transactionCleaned) { transactionCleaned = true; try { checkpoint(signal); await adapter.cleanup(); checkpoint(signal); } catch (cause) { failure = cause; } }
-      if (copy && !copyCleaned) { copyCleaned = true; try { checkpoint(signal); await copy.cleanup(); checkpoint(signal); } catch (cause) { failure ??= cause; } }
+      // Cleanup is mandatory even after caller cancellation. Cancellation
+      // checkpoints belong before mutations, never around the cleanup proof.
+      if (!transactionCleaned) { transactionCleaned = true; try { await adapter.cleanup(); } catch (cause) { failure = cause; } }
+      if (copy && !copyCleaned) { copyCleaned = true; try { await copy.cleanup(); } catch (cause) { failure ??= cause; } }
       if (failure) throw failure;
     };
     try {
@@ -207,10 +213,10 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       if (!copy.path || !copy.closure || !copy.verifyOriginals || !copy.cleanup || copy.closure.some((entry) => !entry.originalPath || !/^[a-f0-9]{64}$/.test(entry.sha256)) || !await rootContains([request.evidenceDirectory], copy.path) || !copy.closure.some((entry) => entry.originalPath === request.workingTemplatePath && entry.sha256 === originalMaster)) throw new QualificationError('WORKING_COPY_UNVERIFIED', 'working-copy closure, authorization or cleanup proof is missing', 'capability');
       for (const entry of copy.closure) if (!await rootContains(options.approvedTemplateRoots, entry.originalPath)) throw new QualificationError('WORKING_COPY_CLOSURE_ESCAPE', 'linked source is outside approved template roots');
       const sentinelPath = resolve(request.evidenceDirectory, 'sentinel/source.png'); await (options.sentinel ?? sentinel)(sentinelPath); evidencePaths.push('sentinel/source.png'); checkpoint(signal);
-      let preparation: QualificationObservation = {};
+      let preparation: QualificationObservation = {}; const preparedBefore = await hashFile(copy.path);
       if (adapter.prepare) { checkpoint(signal); preparation = await adapter.prepare({ workingTemplatePath: copy.path, evidenceDirectory: request.evidenceDirectory, ...(signal ? { signal } : {}) }); checkpoint(signal); if (preparation.changed !== true) throw new QualificationError('PREPARATION_CHANGE_UNPROVEN', 'prepared path requires explicit changed:true'); if (!adapter.savePreparedCopy || !adapter.reopenPreparedCopy) throw new QualificationError('PREPARATION_LIFECYCLE_MISSING', 'changed preparation requires save and reopen primitives', 'capability'); checkpoint(signal); ack(await adapter.savePreparedCopy(copy.path), 'savePreparedCopy'); checkpoint(signal); ack(await adapter.reopenPreparedCopy(copy.path), 'reopenPreparedCopy'); checkpoint(signal); }
       else if (copy.noChangeProof?.acknowledged !== true) throw new QualificationError('PREPARATION_STATE_UNKNOWN', 'already-prepared copy requires explicit no-change proof');
-      const preparedSha = await hashFile(copy.path); const selectors = await adapter.resolveSelectors({ workingTemplatePath: copy.path, inspection: request.inspection, proposal: request.proposal }); if (!validSelectorProof(selectors, preparedSha, request.inspection, request.proposal)) throw new QualificationError('SELECTOR_PROVENANCE_INVALID', 'selectors were not regenerated for every supplied candidate');
+      const preparedSha = await hashFile(copy.path); if (adapter.prepare && preparedSha === preparedBefore) throw new QualificationError('PREPARATION_CHANGE_UNPROVEN', 'prepared changed:true did not change copied bytes'); const selectors = await adapter.resolveSelectors({ workingTemplatePath: copy.path, inspection: request.inspection, proposal: request.proposal }); if (!validSelectorProof(selectors, preparedSha, request.inspection, request.proposal)) throw new QualificationError('SELECTOR_PROVENANCE_INVALID', 'selectors were not regenerated for every supplied candidate');
       const geometry = await adapter.verifyGeometry(request.proposal.fitMode, selectors.targets.map((target) => target.targetCandidateId)); if (!geometry || geometry.passed !== true || !(await existsInside(request.evidenceDirectory, geometry.evidencePath))) throw new QualificationError('GEOMETRY_EVIDENCE_INVALID', 'measured geometry evidence is missing'); evidencePaths.push(geometry.evidencePath); checks.push({ id: 'geometry', passed: true, evidencePath: geometry.evidencePath });
       const linkage = await adapter.verifyLinkage(); if (!linkage || linkage.passed !== true || !(await existsInside(request.evidenceDirectory, linkage.evidencePath))) throw new QualificationError('LINKAGE_EVIDENCE_INVALID', 'linkage evidence is missing'); evidencePaths.push(linkage.evidencePath); checks.push({ id: 'linkage', passed: true, evidencePath: linkage.evidencePath });
       if (!adapter.inspectClipping && !adapter.readClipping) throw new QualificationError('CLIPPING_CAPABILITY_MISSING', 'clipping operation is not qualified', 'capability');
@@ -225,11 +231,24 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       for (const path of evidencePaths) if (pathEscape(path) || path.startsWith('/') || !(await existsInside(request.evidenceDirectory, path))) throw new QualificationError('EVIDENCE_INCOMPLETE', `missing evidence ${path}`);
       const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, fileRef(copy.path, preparedSha, `${request.inspection.template.rootId}:qualification`), selectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
     } catch (cause) {
-      unknown = cause instanceof QualificationError && cause.category === 'ambiguousState'; if (unknown) await adapter.lock.markUnknownMutation?.().catch(() => undefined); try { await clean(); } catch { /* cleanup failure remains blocked */ }
-      const failure = cause instanceof QualificationError ? cause : new QualificationError('QUALIFICATION_BLOCKED', cause instanceof Error ? cause.message : String(cause), 'ambiguousState'); const existing = []; for (const path of evidencePaths) if (await existsInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing)], checks.map((check) => ({ ...check, passed: false })), existing);
+      let barrierFailure: unknown;
+      if (!(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN') || cause instanceof Error && /unknown|timeout|lost reply|uncertain|mutation|cleanup/i.test(cause.message)) {
+        if (!adapter.lock.markUnknownMutation) barrierFailure = new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'qualification barrier persistence is unavailable', 'ambiguousState');
+        else try { await adapter.lock.markUnknownMutation(); } catch (error) { barrierFailure = new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'qualification barrier persistence failed', 'ambiguousState'); }
+      }
+      let cleanupFailure: unknown;
+      try { await clean(); } catch (error) { cleanupFailure = error; if (!adapter.lock.markUnknownMutation) barrierFailure ??= new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'cleanup failure cannot retain the recovery barrier', 'ambiguousState'); else try { await adapter.lock.markUnknownMutation(); } catch { barrierFailure ??= new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'cleanup failure barrier persistence failed', 'ambiguousState'); } }
+      const primary = barrierFailure ?? cleanupFailure ?? cause; const failure = primary instanceof QualificationError ? primary : new QualificationError('CLEANUP_FAILED', primary instanceof Error ? primary.message : String(primary), 'ambiguousState'); const existing = []; for (const path of evidencePaths) if (await existsInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing)], checks.map((check) => ({ ...check, passed: false })), existing);
     }
   };
-  try { return await adapter.lock.runExclusive(`qualification-${request.inspection.inspectionId}`, execute, signal); } catch (cause) { await adapter.lock.markUnknownMutation?.().catch(() => undefined); return blocked([domainError('QUALIFICATION_LOCK_FAILED', cause instanceof Error ? cause.message : String(cause), 'ambiguousState')], [], []); }
+  try { return await adapter.lock.runExclusive(`qualification-${request.inspection.inspectionId}`, execute, signal); } catch (cause) {
+    let barrierCode = 'QUALIFICATION_LOCK_FAILED';
+    let barrierMessage = cause instanceof Error ? cause.message : String(cause);
+    if (adapter.lock.markUnknownMutation) {
+      try { await adapter.lock.markUnknownMutation(); } catch { barrierCode = 'RECOVERY_BARRIER_PERSIST_FAILED'; barrierMessage = 'qualification barrier persistence failed'; }
+    } else { barrierCode = 'RECOVERY_BARRIER_UNAVAILABLE'; barrierMessage = 'qualification barrier persistence is unavailable'; }
+    return blocked([domainError(barrierCode, barrierMessage, 'ambiguousState')], [], []);
+  }
 }
 
 export const qualifyTemplate = qualify;

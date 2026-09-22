@@ -47,6 +47,8 @@ const validDigest = (value: unknown): value is string => typeof value === 'strin
 function validateEntry(value: unknown, previous: JournalEntry | undefined, identity: JournalIdentity, states: Map<string, JournalState>): JournalEntry {
   if (!value || typeof value !== 'object') throw new RecoveryError('JOURNAL_CORRUPT', 'journal entry is not an object', 'ambiguousState', false);
   const entry = value as Partial<JournalEntry>;
+  const allowed = new Set(['schemaVersion', 'sequence', 'timestamp', 'operation', 'requestId', 'mutation', 'state', 'jobId', 'operationId', 'hostId', 'ownershipToken', 'installationDigest', 'previousDigest', 'digest', 'reason']);
+  if (Object.keys(entry).some((key) => !allowed.has(key))) throw new RecoveryError('JOURNAL_CORRUPT', 'journal entry contains unknown fields', 'ambiguousState', false);
   if (entry.schemaVersion !== 1 || !Number.isInteger(entry.sequence) || Number(entry.sequence) <= 0 || !entry.timestamp || !Number.isFinite(Date.parse(entry.timestamp)) || typeof entry.operation !== 'string' || entry.operation.length === 0 || typeof entry.requestId !== 'string' || entry.requestId.length === 0 || typeof entry.mutation !== 'boolean' || !['issued', 'acknowledged', 'failedSafe', 'unknown', 'reconciled'].includes(String(entry.state)) || typeof entry.jobId !== 'string' || typeof entry.operationId !== 'string' || typeof entry.hostId !== 'string' || typeof entry.ownershipToken !== 'string' || !validDigest(entry.installationDigest) || (entry.previousDigest !== null && !validDigest(entry.previousDigest)) || !validDigest(entry.digest)) throw new RecoveryError('JOURNAL_CORRUPT', 'journal entry schema is invalid', 'ambiguousState', false);
   if (previous && entry.sequence !== previous.sequence + 1) throw new RecoveryError('JOURNAL_CORRUPT', 'journal sequence is not monotonic', 'ambiguousState', false);
   if (previous && entry.previousDigest !== previous.digest) throw new RecoveryError('JOURNAL_CORRUPT', 'journal digest chain is broken', 'ambiguousState', false);
@@ -113,7 +115,14 @@ export class OperationJournal {
         const text = await readFile(this.currentPath, 'utf8');
         const parsed: JournalEntry[] = [];
         const states = new Map<string, JournalState>();
-        for (const line of text.split('\n').filter(Boolean)) parsed.push(validateEntry(JSON.parse(line), parsed.at(-1), this.identityValue, states));
+        const requestMeta = new Map<string, { operation: string; mutation: boolean }>();
+        for (const line of text.split('\n').filter(Boolean)) {
+          const candidate = validateEntry(JSON.parse(line), parsed.at(-1), this.identityValue, states);
+          const prior = requestMeta.get(candidate.requestId);
+          if (prior && (prior.operation !== candidate.operation || prior.mutation !== candidate.mutation)) throw new RecoveryError('JOURNAL_METADATA_DRIFT', 'journal request metadata changed across terminal records', 'ambiguousState', false);
+          requestMeta.set(candidate.requestId, { operation: candidate.operation, mutation: candidate.mutation });
+          parsed.push(candidate);
+        }
         this.entries.splice(0, this.entries.length, ...parsed);
         this.sequence = parsed.reduce((max, entry) => Math.max(max, Number(entry.sequence)), this.sequence);
         for (const entry of parsed) this.requests.set(entry.requestId, { operation: entry.operation, mutation: entry.mutation });
@@ -212,21 +221,29 @@ export async function runUncertainOperation<T>(options: OperationCall<T>): Promi
   }
 
   let dispatched = false;
+  let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abortListener: (() => void) | undefined;
   let rejectRace!: (error: unknown) => void;
   const raceSignal = new Promise<never>((_, reject) => { rejectRace = reject; });
   const callPromise = Promise.resolve().then(async () => {
-    await options.onDispatch?.();
-    if (options.signal?.aborted) throw cancellation(options.signal, false);
+    // The dispatch phase includes durable bookkeeping. Mark it as in-flight
+    // before onDispatch so a timeout cannot release the installation lock
+    // while that callback may still reach the transport.
     dispatched = true;
+    await options.onDispatch?.();
+    // A timeout may win while onDispatch is still flushing the lock/journal.
+    // Do not let that late callback dispatch a mutation after the caller has
+    // already received an ambiguous timeout.
+    if (timedOut) throw new RecoveryError('OPERATION_TIMEOUT', `${options.operation} timed out before dispatch completed`, 'ambiguousState', false);
+    if (options.signal?.aborted) throw cancellation(options.signal, false);
     return options.call();
   });
   callPromise.catch(() => undefined);
   void callPromise.then(() => options.onSettled?.(), () => options.onSettled?.()).catch(() => undefined);
   options.journal.track(options.requestId, callPromise);
   const timeoutMs = options.timeoutMs ?? operationTimeoutMs(options.operation);
-  timer = setTimeout(() => rejectRace(new RecoveryError('OPERATION_TIMEOUT', `${options.operation} exceeded its ${timeoutMs}ms failure-detection ceiling`, 'ambiguousState', false)), timeoutMs);
+  timer = setTimeout(() => { timedOut = true; rejectRace(new RecoveryError('OPERATION_TIMEOUT', `${options.operation} exceeded its ${timeoutMs}ms failure-detection ceiling`, 'ambiguousState', false)); }, timeoutMs);
   if (options.signal) {
     abortListener = () => rejectRace(cancellation(options.signal!, dispatched));
     options.signal.addEventListener('abort', abortListener, { once: true });
@@ -280,6 +297,7 @@ export type RecoveryRuntime = {
   timeouts?: Partial<Record<string, number>>;
   onUnknown?: () => void | Promise<void>;
   clearPendingOperations?: () => void | Promise<void>;
+  canonicalPath?: (path: string) => string | Promise<string>;
 };
 
 export type RecoveryResult = { safe: boolean; evidencePaths: string[]; outstanding: string[]; ambiguous?: boolean; error?: { code: string; category: 'ambiguousState' | 'validation'; retryable: false; evidencePaths: string[] } };
@@ -305,7 +323,10 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
   const guard = async <T>(operation: string, call: () => Promise<T>): Promise<T> => runUncertainOperation({ operation, requestId: `recovery-${operation}-${globalThis.crypto.randomUUID()}`, mutation: operation === 'closeDiscard', journal: primitiveJournal, timeoutMs: runtime.timeouts?.[operation] ?? runtime.timeoutMs ?? operationTimeoutMs(operation), signal, onUnknown: runtime.onUnknown, call });
   if (signal.aborted) return invalidRecovery(runtime, ['cancelled'], 'CANCELLED', 'recovery cancelled before dispatch');
   let entries: JournalEntry[];
-  try { entries = await guard('readDocument', runtime.journal.read); }
+  // Journal bytes are the persisted authority and must be read before adding
+  // recovery's own primitive records; otherwise the read guard would make
+  // its synthetic issued record look like an unresolved user operation.
+  try { entries = await (runtime.operationJournal ? runtime.operationJournal.read() : runtime.journal.read()); }
   catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, ['journal-read-failed'], error.code, error.message, true); return invalidRecovery(runtime, ['journal-read-failed'], 'JOURNAL_READ_FAILED', 'journal could not be read'); }
   if (entries.some((entry) => entry.jobId !== identity.jobId || entry.operationId !== identity.operationId || entry.hostId !== identity.hostId || entry.ownershipToken !== identity.ownershipToken || entry.installationDigest !== identity.installationDigest)) return invalidRecovery(runtime, ['journal-identity-mismatch'], 'JOURNAL_IDENTITY_MISMATCH', 'journal operation identity does not match recovery owner');
   const outstanding = new Set<string>();
@@ -321,13 +342,24 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
   try { documents = [...await guard('readLayers', runtime.listDocuments)]; } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], 'DOCUMENT_INVENTORY_FAILED', 'document inventory failed'); }
   const ledger = new Map((runtime.ownershipLedger ?? []).map((record) => [record.documentId, record]));
   const owned = documents.filter((document) => document.owned);
+  const strictPostconditions = Boolean(runtime.operationJournal || runtime.clearPendingOperations);
+  const canonical = async (path: string): Promise<string> => runtime.canonicalPath ? resolve(await runtime.canonicalPath(path)) : resolve(path);
+  const ownedDocument = (id: string): boolean => {
+    const document = documents.find((candidate) => candidate.id === id);
+    const proof = ledger.get(id);
+    return Boolean(document?.owned && proof && proof.jobId === identity.jobId && proof.operationId === identity.operationId && proof.hostId === identity.hostId && proof.ownershipToken === identity.ownershipToken && proof.installationDigest === identity.installationDigest);
+  };
   for (const proof of ledger.values()) {
     const document = documents.find((candidate) => candidate.id === proof.documentId);
-    if (!document || !document.owned || !insideRoot(identity.jobRoot, proof.path)) return invalidRecovery(runtime, [...outstanding, `ownership-ledger-mismatch:${proof.documentId}`], 'OWNERSHIP_LEDGER_MISMATCH', 'persisted ownership ledger does not match the live document inventory');
+    if (!document || !document.owned || !insideRoot(identity.jobRoot, proof.path) || !(await canonical(proof.path)).startsWith(`${await canonical(identity.jobRoot)}${sep}`) && (await canonical(proof.path)) !== await canonical(identity.jobRoot)) return invalidRecovery(runtime, [...outstanding, `ownership-ledger-mismatch:${proof.documentId}`], 'OWNERSHIP_LEDGER_MISMATCH', 'persisted ownership ledger does not match the live document inventory');
   }
   for (const document of owned) {
     const proof = ledger.get(document.id);
-    if (!proof || proof.jobId !== identity.jobId || proof.operationId !== identity.operationId || proof.hostId !== identity.hostId || proof.ownershipToken !== identity.ownershipToken || proof.installationDigest !== identity.installationDigest || !document.path || resolve(document.path) !== resolve(proof.path) || document.parentId !== proof.parentId || (document.depth ?? -1) !== proof.depth || !insideRoot(identity.jobRoot, proof.path) || (document.parentId !== null && !documents.some((candidate) => candidate.id === document.parentId))) return invalidRecovery(runtime, [...outstanding, `ownership-unproven:${document.id}`], 'DOCUMENT_OWNERSHIP_UNPROVEN', 'document ownership, path, parent, or depth could not be proven');
+    if (!proof || proof.jobId !== identity.jobId || proof.operationId !== identity.operationId || proof.hostId !== identity.hostId || proof.ownershipToken !== identity.ownershipToken || proof.installationDigest !== identity.installationDigest || !document.path || resolve(document.path) !== resolve(proof.path) || document.parentId !== proof.parentId || (document.depth ?? -1) !== proof.depth || !insideRoot(identity.jobRoot, proof.path) || (document.parentId !== null && !ownedDocument(document.parentId))) return invalidRecovery(runtime, [...outstanding, `ownership-unproven:${document.id}`], 'DOCUMENT_OWNERSHIP_UNPROVEN', 'document ownership, path, parent, or depth could not be proven');
+    if (document.parentId !== null) {
+      const parent = documents.find((candidate) => candidate.id === document.parentId);
+      if (!parent || !ownedDocument(parent.id) || (parent.depth ?? -1) >= (document.depth ?? -1)) return invalidRecovery(runtime, [...outstanding, `parent-chain-invalid:${document.id}`], 'DOCUMENT_PARENT_CHAIN_INVALID', 'owned document parent chain is not canonical and ledger-valid');
+    }
   }
   if (owned.some((document) => document.dirty)) return invalidRecovery(runtime, [...outstanding, ...owned.filter((document) => document.dirty).map((document) => `dirty:${document.id}`)], 'DIRTY_DOCUMENT_UNSAFE', 'an owned child is still dirty');
   for (const document of owned.sort((a, b) => (b.depth ?? 0) - (a.depth ?? 0))) {
@@ -335,6 +367,12 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
     try { await guard('closeDiscard', () => runtime.closeDiscard(document.id)); }
     catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, `close-failed:${document.id}`], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, `close-failed:${document.id}`], 'CLOSE_FAILED', 'owned document cleanup failed'); }
   }
+  // Re-inventory after cleanup. A successful close acknowledgement alone does
+  // not prove that Photoshop actually removed the document or its children.
+  try {
+    const remaining = [...await guard('readLayers', runtime.listDocuments)];
+    if (strictPostconditions && remaining.some((document) => document.owned || ledger.has(document.id))) return invalidRecovery(runtime, [...outstanding, 'owned-documents-remain'], 'CLEANUP_POSTCONDITION_FAILED', 'owned documents remain after recovery cleanup');
+  } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'cleanup-inventory-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'cleanup-inventory-failed'], 'CLEANUP_INVENTORY_FAILED', 'post-cleanup document inventory failed'); }
   try { if (!(await guard('readDocument', runtime.verifyOriginals))) return invalidRecovery(runtime, [...outstanding, 'original-hash-mismatch'], 'ORIGINAL_HASH_MISMATCH', 'original or dependency hashes changed'); }
   catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'original-hash-verification-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'original-hash-verification-failed'], 'ORIGINAL_HASH_FAILED', 'original hash verification failed'); }
   if (outstanding.size > 0) {
@@ -342,6 +380,10 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
     try { await guard('readDocument', async () => { await runtime.clearPendingOperations!(); }); }
     catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], 'PENDING_OPERATIONS_UNRESOLVED', 'pending-operation reconciliation failed'); }
   }
+  try {
+    const finalDocuments = [...await guard('readLayers', runtime.listDocuments)];
+    if (strictPostconditions && finalDocuments.some((document) => document.owned || ledger.has(document.id))) return invalidRecovery(runtime, [...outstanding, 'pending-postcondition-failed'], 'CLEANUP_POSTCONDITION_FAILED', 'pending operations did not clear all owned documents');
+  } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'pending-postcondition-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'pending-postcondition-failed'], 'CLEANUP_POSTCONDITION_FAILED', 'pending-operation postcondition could not be proven'); }
   return { safe: true, evidencePaths: recoveryEvidence(runtime), outstanding: [] };
 }
 

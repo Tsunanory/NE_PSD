@@ -99,6 +99,29 @@ async function assertNoSymlink(root: string, target: string): Promise<void> {
   }
 }
 
+/** Resolve and create evidence parents one component at a time. */
+async function safeEvidencePath(root: string, relativePath: string): Promise<string> {
+  if (isAbsolute(relativePath) || relativePath.includes('\0') || relativePath.split(/[\\/]/).includes('..')) throw new ExportError('EXPORT_PATH_INVALID', 'evidence path is not a safe relative path');
+  const canonicalRoot = await realpath(root);
+  const target = resolve(canonicalRoot, relativePath);
+  if (!within(canonicalRoot, target)) throw new ExportError('EXPORT_PATH_INVALID', 'evidence path escapes the attempt bundle');
+  const parts = relative(canonicalRoot, target).split(/[\\/]/).filter(Boolean);
+  let current = canonicalRoot;
+  for (let index = 0; index < parts.length; index += 1) {
+    current = resolve(current, parts[index]!);
+    try {
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) throw new ExportError('EXPORT_PATH_INVALID', 'evidence path traverses a symlink');
+      if (index < parts.length - 1 && !stat.isDirectory()) throw new ExportError('EXPORT_PATH_INVALID', 'evidence parent is not a directory');
+    } catch (error) {
+      if (error instanceof ExportError) throw error;
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (index < parts.length - 1) { await mkdir(current); const made = await lstat(current); if (made.isSymbolicLink() || !made.isDirectory()) throw new ExportError('EXPORT_PATH_INVALID', 'evidence parent was redirected'); }
+    }
+  }
+  return target;
+}
+
 async function safeOutputPath(root: string, variantId: ExportVariantId, format: 'jpeg' | 'png'): Promise<string> {
   const variantsRoot = resolve(root, 'variants');
   await mkdir(variantsRoot, { recursive: true });
@@ -209,8 +232,7 @@ export async function exportVariants(options: ExportOptions): Promise<ExportResu
       if (!acknowledged(restored)) throw new ExportError('MUTATION_UNACKNOWLEDGED', 'qualified common/ancestor state was not restored');
       const destination = await safeOutputPath(options.bundleRoot, variantId, options.output.format);
       const evidenceRel = `visibility/${variantId}.json`;
-      const evidenceAbs = resolve(options.bundleRoot, evidenceRel);
-      await mkdir(resolve(evidenceAbs, '..'), { recursive: true });
+      const evidenceAbs = await safeEvidencePath(options.bundleRoot, evidenceRel);
       const evidence = await visibility(options, variantId, evidenceRel);
       await writeFile(evidenceAbs, JSON.stringify(evidence));
       visibilityEvidence.push(evidence);

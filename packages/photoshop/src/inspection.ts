@@ -45,11 +45,11 @@ function roleHints(layer: SelectorLayer): Array<'target' | 'reference' | 'input'
 type Candidate = { documentKey: string; layer: SelectorLayer; selector: LayerSelector; path: string };
 function collectLayers(doc: SelectorDocument, documentKey: string, route: LayerSegment[][] = []): Candidate[] {
   const out: Candidate[] = [];
-  const walk = (layers: SelectorLayer[], path: LayerSegment[], prefix: string): void => {
+  const walk = (layers: SelectorLayer[], path: LayerSegment[], prefix: string, treePath: number[] = []): void => {
     layers.forEach((layer, index) => {
-      const segment = { name: layer.name, kind: layer.kind, fingerprint: structuralFingerprint(layer, layers, [index]) };
+      const segment = { name: layer.name, kind: layer.kind, fingerprint: structuralFingerprint(layer, layers, [...treePath, index]) };
       const next = [...path, segment]; out.push({ documentKey, layer, selector: { documentRoute: route, layerPath: next }, path: `${prefix}/${index}` });
-      if (layer.children.length) walk(layer.children as SelectorLayer[], next, `${prefix}/${index}`);
+      if (layer.children.length) walk(layer.children as SelectorLayer[], next, `${prefix}/${index}`, [...treePath, index]);
     });
   };
   walk(doc.layers, [], 'root'); return out;
@@ -63,6 +63,7 @@ async function inspectWithAdapter(path: string, adapter: InspectionAdapter, supp
     const preExisting = new Set((await adapter.listDocuments()).map((doc) => doc.id));
     const opened: string[] = [];
     const unresolvedLinks: string[] = [];
+    let unresolvedLiveLink = false;
     const docs: Array<{ doc: SelectorDocument; key: string; parentKey: string | null; viaLayer: LayerSelector | null; sourceKind: 'root' | 'embedded' | 'linked' | 'unknown'; source: FileRef | null }> = [];
     try {
       const rootOpened = await adapter.openDocument(template);
@@ -75,19 +76,24 @@ async function inspectWithAdapter(path: string, adapter: InspectionAdapter, supp
         for (const item of layers) {
           if (item.layer.kind !== 'smartObject') continue;
           const linkage = await adapter.readLinkage(doc.id, item.layer);
-          if (!linkage.proven || linkage.sourceKind === 'unknown') { unresolvedLinks.push(`${key}:${item.path}:linkage-unproven`); continue; }
+          if (!linkage.proven || linkage.sourceKind === 'unknown') { unresolvedLinks.push(`${key}:${item.path}:linkage-unproven`); unresolvedLiveLink ||= linkage.sourceKind === 'linked'; continue; }
           const childOpened = await adapter.openContents(doc.id, item.layer);
           if (childOpened.opened && !preExisting.has(childOpened.document.id)) opened.push(childOpened.document.id);
           const child = childOpened.document;
           const childKey = `child-${docs.length}`; const via = item.selector.layerPath;
           docs.push({ doc: child, key: childKey, parentKey: key, viaLayer: { documentRoute: route, layerPath: via }, sourceKind: linkage.sourceKind, source: linkage.source ?? null });
-          await visit(child, childKey, [...route, [via.at(-1)!]]);
+          // Preserve the complete route from the document root. Using only
+          // the last segment silently remaps nested Smart Objects when a
+          // sibling has the same name.
+          await visit(child, childKey, [...route, via]);
         }
       };
       await visit(root, 'root', []);
       const reportCandidates = candidates.map((item, index) => ({ candidateId: `candidate-${index + 1}`, documentKey: item.documentKey, selector: item.selector, bounds: boundsOf(item.layer), visible: item.layer.visible, clipped: item.layer.clipped, belowCandidateId: null, roleHints: roleHints(item.layer) }));
       const capability = adapter.capabilities ? CapabilityReportSchema.parse(await adapter.capabilities()) : null;
-      const status = capability && unresolvedLinks.length === 0 ? 'liveObserved' as const : 'staticCandidate' as const;
+      // An unresolved edge is a live observation that blocks qualification;
+      // it is not permission to relabel the entire report as static.
+      const status = capability && (unresolvedLinks.length === 0 || unresolvedLiveLink) ? 'liveObserved' as const : 'staticCandidate' as const;
       const report = InspectionReportSchema.parse({ schemaVersion: 1, inspectionId: options.inspectionId ?? `inspection-${sha(template.sha256).slice(0, 24)}`, evidenceStatus: status, template, capabilities: status === 'liveObserved' ? capability : null, documents: docs.map((d) => ({ documentKey: d.key, parentKey: d.parentKey, viaLayer: d.viaLayer, sourceKind: d.sourceKind, source: d.source, width: d.doc.width, height: d.doc.height, colorMode: 'RGB', bitDepth: 8 })), candidates: reportCandidates, observedVariantStates: reportCandidates.filter((c) => c.roleHints.includes('variant')).map((c) => ({ candidateId: c.candidateId, visible: c.visible })), unresolvedLinks, evidencePaths: ['inspection/report.json', 'inspection/trace.json'] });
       await mkdir(join(evidenceDirectory, 'inspection'), { recursive: true });
       await writeFile(join(evidenceDirectory, 'inspection/report.json'), JSON.stringify(report, null, 2));

@@ -61,3 +61,17 @@ The correction adds unresolved-transport tracking through timeout and late-reply
 Correction commit: `a61c0c5` (`fix(photoshop): close B13 recovery race conditions`). Correction verification: focused recovery/session/backend/MCP tests: 46 passed; workspace checks passed. Full Photoshop suite: 156 passed, 1 inherited B04 selector failure at `tests/photoshop/selectors.test.ts:89`; `git diff --check` passed. Live Photoshop, Windows, and process-death qualification remain untested.
 
 B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.
+
+## B14 conformance and integration repair
+
+Status: implemented-and-fake-tested.
+
+The B14 corpus is `tests/photoshop/fixtures/conformance-cases.json`, exercised by `tests/photoshop/conformance.test.ts`. It contains the complete cover/contain/stretch × portrait/landscape/square × JPEG/PNG matrix, source metadata extremes, non-origin geometry, transparency, vector-mask holes, zero/unknown bounds, shared/independent targets, duplicate names, linked dependencies, Cyrillic and whitespace names, core-owned Windows reserved/case-only names, corrupt input, color/schema faults, and mutation lost-reply rows. Asset identity is always `assetId`; source basenames are not used as identity.
+
+Integration repairs include whitespace-safe pinned argv launch, selected-candidate structural selector ambiguity, complete nested inspection routes, copied linked-target byte rehashing, prepared-copy pre/post byte proof, cancellation-independent qualification cleanup, selector cross-candidate shape checks, strict journal fields/metadata and identity-keyed journal caches, timeout-before-dispatch latching, persisted-journal recovery inventory/postconditions, full lock identity release and atomic stale adoption, trusted recovery evidence roots, authoritative discard before backend evidence writes, and recovery barriers for ambiguous export acknowledgements.
+
+Verification from this B14 packet:
+
+- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run test:photoshop -- tests/photoshop/conformance.test.ts`: 4 passed.
+- Focused selector/isolation/inspection/recovery regressions: 46 passed.
+- Live Photoshop, Windows, source-image appearance, process-death and real-memory gates remain untested. Fake success is not live qualification.

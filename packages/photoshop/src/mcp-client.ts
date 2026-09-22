@@ -60,10 +60,11 @@ export class McpClient {
     const identity = this.options.sessionLock?.journalIdentity;
     const path = this.options.sessionLock?.journalPath;
     if (!identity || !path) return this.journal;
-    const existing = this.journals.get(path);
+    const key = `${path}\u0000${JSON.stringify(identity)}`;
+    const existing = this.journals.get(key);
     if (existing) return existing;
     const created = new OperationJournal(path, identity);
-    this.journals.set(path, created);
+    this.journals.set(key, created);
     return created;
   }
   async runTransaction<T>(operationId: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -171,8 +172,11 @@ export type PinnedLaunchParameters = { command: string; args: string[] };
 const absolutePath = (value: string): boolean => value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
 const pathBase = (value: string): string => value.split(/[\\/]/).at(-1) ?? '';
 export function buildPinnedLaunchParameters(input: { nodeExecutable: string; serverEntry: string; explicitArgs: readonly string[] }): PinnedLaunchParameters {
-  if (!absolutePath(input.nodeExecutable) || !['node', 'node.exe'].includes(pathBase(input.nodeExecutable)) || /[;&|`$()\s]/.test(input.nodeExecutable)) throw new McpClientError('INVALID_LAUNCH', 'node executable must be an absolute pinned Node path');
-  if (!absolutePath(input.serverEntry) || !input.serverEntry.replaceAll('\\', '/').endsWith('/node_modules/@alisaitteke/photoshop-mcp/dist/index.js') || /[;&|`$()\s]/.test(input.serverEntry)) throw new McpClientError('INVALID_LAUNCH', 'server entry must be an absolute vendored Photoshop MCP entry');
+  // Spaces are valid Windows/macOS path characters. Arguments are passed to
+  // the child process as an argv array, so rejecting whitespace is neither a
+  // safety proof nor necessary. Reject shell metacharacters instead.
+  if (!absolutePath(input.nodeExecutable) || !['node', 'node.exe'].includes(pathBase(input.nodeExecutable)) || /[;&|`$()]/.test(input.nodeExecutable)) throw new McpClientError('INVALID_LAUNCH', 'node executable must be an absolute pinned Node path');
+  if (!absolutePath(input.serverEntry) || !input.serverEntry.replaceAll('\\', '/').endsWith('/node_modules/@alisaitteke/photoshop-mcp/dist/index.js') || /[;&|`$()]/.test(input.serverEntry)) throw new McpClientError('INVALID_LAUNCH', 'server entry must be an absolute vendored Photoshop MCP entry');
   if (input.explicitArgs.some((arg) => /[;&|`$()]/.test(arg) || arg.length === 0)) throw new McpClientError('INVALID_LAUNCH', 'launch arguments contain shell syntax or are empty');
   return { command: input.nodeExecutable, args: [input.serverEntry, ...input.explicitArgs] };
 }

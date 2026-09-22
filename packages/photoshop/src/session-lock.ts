@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, rename } from 'node:fs/promises';
 import { join, normalize, relative, resolve, sep } from 'node:path';
 import { OperationJournal, type JournalIdentity } from './recovery.js';
 
@@ -135,8 +135,22 @@ export class SessionLock {
     if (prior.hostId !== this.options.hostId || prior.installationPath !== this.installationPath() || prior.installationDigest !== this.options.installationDigest || !safeJournalPath(this.options.lockPath, prior.journalPath) || prior.operationId !== input.operationId || prior.ownershipToken !== input.ownershipToken || prior.pid !== input.previousPid || prior.processStartIdentity !== input.previousProcessStartIdentity) throw new SessionLockError('RECOVERY_REQUIRED', 'stale lock identity or ownership token does not match');
     const alive = this.options.isProcessAlive ? await this.options.isProcessAlive(prior.pid) : true;
     if (alive) throw new SessionLockError('RECOVERY_REQUIRED', 'the previous owner is still alive');
-    this.owner = { ...prior, pid: this.options.pid ?? process.pid, processStartIdentity: this.processStart(), heartbeatAt: this.options.now() };
-    await writeFile(this.metadataPath(), JSON.stringify(this.owner), 'utf8');
+    const adopted = { ...prior, pid: this.options.pid ?? process.pid, processStartIdentity: this.processStart(), heartbeatAt: this.options.now() };
+    // Serialize adoption and replace the metadata atomically. A stale-owner
+    // read followed by an unconditional write could overwrite a new owner.
+    const claimPath = `${this.options.lockPath}.adopt`;
+    try { await mkdir(claimPath); } catch { throw new SessionLockError('RECOVERY_REQUIRED', 'another recovery adoption is in progress'); }
+    try {
+      const current = JSON.parse(await readFile(this.metadataPath(), 'utf8')) as unknown;
+      if (!validMetadata(current)) throw new SessionLockError('RECOVERY_REQUIRED', 'stale lock metadata changed or is invalid');
+      const currentMetadata = current as LockMetadata;
+      const identityMatches = currentMetadata.hostId === prior.hostId && currentMetadata.installationPath === prior.installationPath && currentMetadata.installationDigest === prior.installationDigest && currentMetadata.operationId === prior.operationId && currentMetadata.ownershipToken === prior.ownershipToken && currentMetadata.journalPath === prior.journalPath && currentMetadata.pid === prior.pid && currentMetadata.processStartIdentity === prior.processStartIdentity;
+      if (!identityMatches) throw new SessionLockError('RECOVERY_REQUIRED', 'stale lock identity changed during adoption');
+      const temporary = `${this.metadataPath()}.${this.options.randomToken()}.tmp`;
+      await writeFile(temporary, JSON.stringify(adopted), 'utf8');
+      await rename(temporary, this.metadataPath());
+    } finally { await rm(claimPath, { recursive: true, force: true }); }
+    this.owner = adopted;
     return { adopted: true, operationId: this.owner.operationId, ownershipToken: this.owner.ownershipToken };
   }
 
@@ -150,7 +164,10 @@ export class SessionLock {
     const owner = this.owner;
     let stored: unknown;
     try { stored = JSON.parse(await readFile(this.metadataPath(), 'utf8')); } catch { return { released: false, reason: 'RECOVERY_REQUIRED' }; }
-    if (!validMetadata(stored) || !owner || (stored as LockMetadata).ownershipToken !== owner.ownershipToken) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
+    if (!validMetadata(stored) || !owner) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
+    const persisted = stored as LockMetadata;
+    const identityMatches = persisted.hostId === owner.hostId && persisted.installationPath === owner.installationPath && persisted.installationDigest === owner.installationDigest && persisted.pid === owner.pid && persisted.processStartIdentity === owner.processStartIdentity && persisted.operationId === owner.operationId && persisted.ownershipToken === owner.ownershipToken && persisted.journalPath === owner.journalPath;
+    if (!identityMatches) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
     if (owner.inFlight !== 0 || owner.unsettledOperations !== 0 || owner.unknownMutation || !owner.reconciledJobOwnedDocuments) return { released: false, reason: 'RECOVERY_REQUIRED' };
     await rm(this.options.lockPath, { recursive: true, force: true });
     this.owner = null;

@@ -66,7 +66,13 @@ function resolveSegment(layers: readonly SelectorLayer[], segment: LayerSegment,
   const typed = named.filter((layer) => layer.kind === segment.kind);
   if (typed.length === 0) throw new SelectorError('SELECTOR_KIND_MISMATCH', `layer ${segment.name}`);
   const matching = typed.filter((layer) => structuralFingerprint(layer, layers, [...basePath, layers.indexOf(layer)]) === segment.fingerprint);
-  const equivalent = typed.filter((layer) => sha256Json(layerShape(layer)) === sha256Json(layerShape(typed[0]!)));
+  // Ambiguity is relative to the candidate proved by the selector, never to
+  // the first same-name candidate. The first candidate may be a different
+  // structural sibling and must not influence the result.
+  const selected = matching[0];
+  const equivalent = selected
+    ? typed.filter((layer) => sha256Json(layerShape(layer)) === sha256Json(layerShape(selected)))
+    : [];
   if (matching.length === 1 && equivalent.length > 1) throw new SelectorError('SELECTOR_AMBIGUOUS', `layer ${segment.name}`);
   if (matching.length > 1) throw new SelectorError('SELECTOR_AMBIGUOUS', `layer ${segment.name}`);
   if (matching.length === 0) throw new SelectorError('SELECTOR_FINGERPRINT_MISMATCH', `layer ${segment.name}`);
@@ -88,8 +94,8 @@ function resolvePath(layers: readonly SelectorLayer[], path: readonly LayerSegme
 
 function childDocument(parent: SelectorDocument, via: SelectorLayer): SelectorDocument {
   const direct = via.childDocument ?? via.document;
-  if (direct && direct.parentId === parent.id) return direct;
   const listed = parent.childDocuments?.filter((candidate) => candidate.parentId === parent.id);
+  if (direct && direct.parentId === parent.id && (!listed || listed.some((candidate) => candidate.id === direct.id))) return direct;
   const linked = listed?.find((candidate) => (candidate as SelectorDocument & { viaLayerId?: string }).viaLayerId === via.id);
   if (linked) return linked;
   throw new SelectorError('SELECTOR_DOCUMENT_ROUTE_MISMATCH', `child of ${via.name}`);

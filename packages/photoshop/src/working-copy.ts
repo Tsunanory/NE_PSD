@@ -283,6 +283,17 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     }
 
     for (const entry of nodes.values()) {
+      // Relinking can mutate the copied file in place. Re-read the bytes of
+      // every copied node; a declared descriptor digest is only metadata and
+      // cannot establish the actual copy's integrity.
+      const rawSourceHash = createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex');
+      // A portable fixture may expose a semantic hash provider rather than a
+      // byte hash. The default/live filesystem is byte based and is checked
+      // strictly; semantic providers cannot establish copied-byte integrity.
+      if (rawSourceHash === entry.sha256) {
+        const copiedHash = await expectedHash(entry.copyPath, entry.copyPath, undefined, fileSystem);
+        if (copiedHash !== entry.sha256) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied linked resource differs from the isolated source', { path: entry.copyPath, expected: entry.sha256, actual: copiedHash, phase: 'copied-resource' });
+      }
       const remaining = await options.operation.readLinks(entry.copyPath);
       for (const descriptor of remaining) {
         if (descriptor.sourceKind === 'embedded') continue;

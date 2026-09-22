@@ -113,7 +113,7 @@ function isAmbiguous(cause: unknown): boolean {
   if (value.category === 'ambiguousState') return true;
   const code = typeof value.code === 'string' ? value.code : '';
   const message = cause instanceof Error ? cause.message : String(cause);
-  return code === 'TIMEOUT' || code === 'TRANSPORT_AMBIGUOUS' || code === 'ACK_UNKNOWN' || /ambiguous|unknown|timeout|lost reply/i.test(message);
+  return code === 'TIMEOUT' || code === 'TRANSPORT_AMBIGUOUS' || code === 'ACK_UNKNOWN' || code.endsWith('_UNACKNOWLEDGED') || code === 'MUTATION_UNACKNOWLEDGED' || /ambiguous|unknown|timeout|lost reply|mutation|cleanup|acknowledg/i.test(message);
 }
 
 function acknowledgement(value: unknown, stage: string, require?: 'quiescent' | 'unchanged'): LifecycleAcknowledgement {
@@ -171,7 +171,12 @@ async function writeSafeEvidence(root: string, path: string, value: unknown): Pr
 
 function errorFor(cause: unknown, fallback: string): BackendError {
   if (cause instanceof BackendError) return cause;
-  if (cause instanceof Error && isRecord(cause) && typeof cause.code === 'string') return new BackendError(cause.code, cause.message, isAmbiguous(cause) ? 'ambiguousState' : 'validation', [], false);
+  if (cause instanceof Error && isRecord(cause) && typeof cause.code === 'string') {
+    const category = typeof cause.category === 'string' && ['validation', 'capability', 'transient', 'ambiguousState', 'review', 'cancelled'].includes(cause.category) ? cause.category as DomainError['category'] : isAmbiguous(cause) ? 'ambiguousState' : 'validation';
+    const evidencePaths = Array.isArray(cause.evidencePaths) ? cause.evidencePaths.filter((path): path is string => typeof path === 'string') : [];
+    const retryable = typeof cause.retryable === 'boolean' ? cause.retryable : false;
+    return new BackendError(cause.code, cause.message, category, evidencePaths, retryable);
+  }
   return new BackendError(fallback, cause instanceof Error ? cause.message : String(cause), isAmbiguous(cause) ? 'ambiguousState' : 'validation', [], false);
 }
 
@@ -232,11 +237,12 @@ export class PhotoshopBackend {
   async recover(jobId: string, signal: AbortSignal): Promise<{ safe: boolean; evidencePaths: string[] }> {
     try {
       const recoverInsideLock = async () => {
-        checkpoint(signal);
         const retainRecoveryBarrier = async (): Promise<void> => {
           if (!this.adapter.lock.markUnknownMutation) throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'failed or ambiguous recovery cannot prove installation lock retention', 'ambiguousState', [], false);
           await this.adapter.lock.markUnknownMutation();
         };
+        try {
+        checkpoint(signal);
         if (!this.adapter.recover) { await retainRecoveryBarrier(); return { safe: false, evidencePaths: [] }; }
         let result: { safe: boolean; evidencePaths: string[] };
         try { result = await this.adapter.recover(jobId, signal); }
@@ -246,6 +252,7 @@ export class PhotoshopBackend {
         }
         if (!result || typeof result.safe !== 'boolean' || !Array.isArray(result.evidencePaths)) throw new BackendError('RECOVERY_RESULT_INVALID', 'recovery returned an invalid result');
         const root = typeof this.adapter.recoveryRoot === 'function' ? await this.adapter.recoveryRoot(jobId) : this.adapter.recoveryRoot;
+        if (!root && result.evidencePaths.length > 0) throw new BackendError('RECOVERY_ROOT_UNTRUSTED', 'recovery evidence requires a trusted canonical recovery root', 'ambiguousState', [], false);
         if (!root && result.evidencePaths.some((path) => isAbsolute(path))) throw new BackendError('RECOVERY_PATH_INVALID', 'absolute recovery evidence requires a trusted recovery root');
         const canonicalRoot = root ? await canonicalBundle(root) : undefined;
         const evidencePaths: string[] = [];
@@ -264,6 +271,12 @@ export class PhotoshopBackend {
         }
         await this.adapter.lock.reconcile();
         return { safe: true, evidencePaths };
+        } catch (cause) {
+          // Any malformed result, path failure, or reconciliation failure must
+          // retain the installation barrier before the lock wrapper can exit.
+          await retainRecoveryBarrier();
+          throw cause;
+        }
       };
       return await (this.adapter.lock.runRecovery
         ? this.adapter.lock.runRecovery(recoverInsideLock, signal)
@@ -333,11 +346,15 @@ export class PhotoshopBackend {
         { id: 'propagation', passed: true, evidencePath: 'checks/propagation.json' },
         { id: 'source-integrity', passed: true, evidencePath: 'checks/source-integrity.json' },
       ];
+      // Discard/quiescence is authoritative. Only after it is proven do we
+      // write the relative check and trace evidence.
+      const documentTracePath = relativeEvidence(bundleRoot, session.documentTracePath ?? resolve(bundleRoot, 'document-trace.json'));
+      const toolTracePath = relativeEvidence(bundleRoot, session.toolTracePath ?? resolve(bundleRoot, 'tool-trace.json'));
+      acknowledgement(await session.discard(), 'discard', 'quiescent');
+      cleanupComplete = true;
       for (const check of checks) {
         await writeSafeEvidence(canonicalRoot, check.evidencePath, { id: check.id, passed: check.passed });
       }
-      const documentTracePath = relativeEvidence(bundleRoot, session.documentTracePath ?? resolve(bundleRoot, 'document-trace.json'));
-      const toolTracePath = relativeEvidence(bundleRoot, session.toolTracePath ?? resolve(bundleRoot, 'tool-trace.json'));
       for (const path of [documentTracePath, toolTracePath]) {
         const destination = await safeBundlePath(canonicalRoot, path, true);
         try { await access(destination); } catch { await writeSafeEvidence(canonicalRoot, path, { jobId: request.jobId, assetId: request.asset.assetId }); }
@@ -357,15 +374,24 @@ export class PhotoshopBackend {
         documentTracePath,
         toolTracePath,
       });
-      acknowledgement(await session.discard(), 'discard', 'quiescent');
-      cleanupComplete = true;
       return evidence;
     } catch (cause) {
       if (session && !cleanupComplete) {
         if (isAmbiguous(cause)) {
-          await this.adapter.lock.markUnknownMutation?.().catch(() => undefined);
+          if (!this.adapter.lock.markUnknownMutation) {
+            // Legacy/test adapters without a barrier primitive can still
+            // prove quiescent discard; production adapters must expose the
+            // barrier and take the fail-closed branch below.
+            try { acknowledgement(await session.discard(), 'discard', 'quiescent'); cleanupComplete = true; }
+            catch { throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'ambiguous render cannot retain the installation barrier', 'ambiguousState', [], false); }
+          } else {
+            try { await this.adapter.lock.markUnknownMutation(); } catch { throw new BackendError('RECOVERY_BARRIER_PERSIST_FAILED', 'failed to persist the render recovery barrier', 'ambiguousState', [], false); }
+          }
         } else {
-          try { acknowledgement(await session.discard(), 'discard', 'quiescent'); cleanupComplete = true; } catch { await this.adapter.lock.markUnknownMutation?.().catch(() => undefined); }
+          try { acknowledgement(await session.discard(), 'discard', 'quiescent'); cleanupComplete = true; } catch {
+            if (!this.adapter.lock.markUnknownMutation) throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'failed cleanup cannot retain the installation barrier', 'ambiguousState', [], false);
+            try { await this.adapter.lock.markUnknownMutation(); } catch { throw new BackendError('RECOVERY_BARRIER_PERSIST_FAILED', 'failed to persist the render recovery barrier', 'ambiguousState', [], false); }
+          }
         }
       }
       throw errorFor(cause, 'RENDER_BLOCKED');
