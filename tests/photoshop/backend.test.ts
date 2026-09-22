@@ -1,4 +1,5 @@
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
@@ -61,7 +62,17 @@ function adapter(events: string[], makeSession: () => RenderSession, markUnknown
     lock: { runExclusive: async (_id, fn) => fn(), ...(markUnknownMutation ? { markUnknownMutation } : {}) },
     capabilities: async () => capability,
     inspect: async () => { throw new Error('not used'); },
-    createWorkingCopy: async (request) => { events.push('working-copy'); const created = makeSession(); const documentTracePath = join(request.stagingDirectory, 'document-trace.json'); const toolTracePath = join(request.stagingDirectory, 'tool-trace.json'); try { await access(documentTracePath); } catch { await writeFile(documentTracePath, JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); } try { await access(toolTracePath); } catch { await writeFile(toolTracePath, JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); } return { ...created, documentTracePath, toolTracePath }; },
+    createWorkingCopy: async (request) => {
+      events.push('working-copy'); const created = makeSession();
+      const prePath = join(request.stagingDirectory, 'trace-input', 'pre.bin'); const postPath = join(request.stagingDirectory, 'trace-input', 'post.bin');
+      await mkdir(join(request.stagingDirectory, 'trace-input'), { recursive: true }); await writeFile(prePath, 'pre-trace-content'); await writeFile(postPath, 'post-trace-content');
+      const record = (phase: 'pre' | 'post', path: string, content: string) => ({ schemaVersion: 1, phase, path: path.slice(request.stagingDirectory.length + 1), bytes: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex') });
+      const trace = (kind: string) => JSON.stringify({ schemaVersion: 1, traceType: kind, records: [record('pre', prePath, 'pre-trace-content'), record('post', postPath, 'post-trace-content')] });
+      const documentTracePath = join(request.stagingDirectory, 'document-trace.json'); const toolTracePath = join(request.stagingDirectory, 'tool-trace.json');
+      try { await access(documentTracePath); } catch { await writeFile(documentTracePath, trace('document')); }
+      try { await access(toolTracePath); } catch { await writeFile(toolTracePath, trace('tool')); }
+      return { ...created, documentTracePath, toolTracePath };
+    },
   };
 }
 
@@ -92,12 +103,12 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
     expect(await readFile(dependencyPath)).toEqual(dependencyBefore);
   });
 
-  it('does not return evidence after a variant failure and still discards the owned copy', async () => {
+  it('does not return evidence after an ambiguous variant failure or discard the owned copy', async () => {
     const root = await mkdtemp(join(tmpdir(), 'b12-failure-'));
     const events: string[] = [];
-    const backend = createPhotoshopBackend(adapter(events, () => session(events, '2')));
+    const backend = createPhotoshopBackend(adapter(events, () => session(events, '2'), async () => undefined));
     await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'EXPORT_UNACKNOWLEDGED' });
-    expect(events).toContain('discard');
+    expect(events).not.toContain('discard');
     expect(events).not.toContain('verify-originals');
   });
 
@@ -127,6 +138,32 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
     expect(marked).toBe(true);
     expect(events).not.toContain('discard');
     expect(await readFile(trace, 'utf8')).toBe('prior-trace');
+  });
+
+  it('fails closed without discarding when an ambiguous mutation cannot persist the barrier', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b15-no-barrier-'));
+    const events: string[] = [];
+    const ambiguous = session(events, undefined, { renderResource: async () => { events.push('render-resource'); throw Object.assign(new Error('lost reply'), { code: 'TRANSPORT_AMBIGUOUS' }); } });
+    const backend = createPhotoshopBackend(adapter(events, () => ambiguous));
+    await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'RECOVERY_BARRIER_UNAVAILABLE', category: 'ambiguousState', retryable: false });
+    expect(events).not.toContain('discard');
+  });
+
+  it('fails closed without discarding when barrier persistence fails', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b15-barrier-fails-'));
+    const events: string[] = [];
+    const ambiguous = session(events, undefined, { renderResource: async () => { events.push('render-resource'); throw Object.assign(new Error('lost reply'), { code: 'TRANSPORT_AMBIGUOUS' }); } });
+    const backend = createPhotoshopBackend(adapter(events, () => ambiguous, async () => { throw new Error('lock metadata unavailable'); }));
+    await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'RECOVERY_BARRIER_PERSIST_FAILED', category: 'ambiguousState', retryable: false });
+    expect(events).not.toContain('discard');
+  });
+
+  it('rejects fabricated trace placeholders and accepts independently hashed pre/post records', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b15-traces-'));
+    const events: string[] = [];
+    const original = adapter(events, () => session(events));
+    const invalid = { ...original, createWorkingCopy: async (request: Parameters<BackendAdapter['createWorkingCopy']>[0], signal: AbortSignal) => { const created = await original.createWorkingCopy(request, signal); await writeFile(join(request.stagingDirectory, 'document-trace.json'), JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); return created; } };
+    await expect(createPhotoshopBackend(invalid).render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'TRACE_INVALID' });
   });
 
   it('rejects an unsealed profile before opening a working copy', async () => {

@@ -84,4 +84,44 @@ describe('B14 deterministic Photoshop conformance corpus', () => {
     for (const operation of ['place', 'scale', 'saveChild', 'export', 'closeDiscard']) await expect(runUncertainOperation({ operation, requestId: `b14-${operation}`, mutation: true, timeoutMs: 1, journal, call: async () => { calls += 1; await new Promise<void>(() => undefined); } })).rejects.toMatchObject({ category: 'ambiguousState' });
     expect(calls).toBe(5); expect(journal.pendingUnknown()).toHaveLength(5);
   });
+
+  it('executes every corpus row through its declared acceptance path', async () => {
+    let executed = 0;
+    for (const item of corpus) {
+      executed += 1;
+      const flags = new Set(item.flags);
+      if (flags.has('handledByCore')) {
+        expect(flags.has('windowsReservedName')).toBe(true);
+        continue;
+      }
+      if (flags.has('zeroEffectiveBounds') || flags.has('unknownEffectiveBounds')) {
+        expect(() => scaleFor({ left: 0, top: 0, right: flags.has('zeroEffectiveBounds') ? 0 : Number.NaN, bottom: 10 }, { left: 0, top: 0, right: 10, bottom: 10 }, item.fitMode)).toThrow(RangeError);
+        continue;
+      }
+      if (flags.has('schemaDrift')) {
+        expect(() => buildPinnedLaunchParameters({ nodeExecutable: '/tmp/node', serverEntry: '/tmp/not-the-pinned-server.js', explicitArgs: [] })).toThrow();
+        continue;
+      }
+      if (flags.has('corruptInput') || flags.has('wrongColor')) {
+        const root = await mkdtemp(join(tmpdir(), `b14-row-${item.assetId}-`));
+        const faulty = flags.has('corruptInput') ? 'corrupt' : 'wrongColor';
+        await expect(exportVariants({ bundleRoot: root, approvedBundleRoot: root, output: { format: item.format, quality: 80, colorSpace: 'sRGB', width: 32, height: 24 }, adapter: imageAdapter(root, item.format, { inFlight: 0, max: 0 }, faulty), alphaPolicy: item.format === 'png' ? 'preserve' : 'opaque', ...(item.format === 'jpeg' ? { jpegBackground: { r: 12, g: 34, b: 56 } } : {}), renderingIntent: 'relative-colorimetric', ...(item.format === 'jpeg' ? { qualityEvidence: { unit: '1-100' as const } } : {}) })).rejects.toMatchObject({ code: 'FILE_INVALID' });
+        continue;
+      }
+      if (flags.has('lostReply')) {
+        const operation = item.flags.find((flag) => flag.startsWith('cancel'))?.slice('cancel'.length).toLowerCase() as 'place' | 'scale' | 'saveChild' | 'export' | 'closeDiscard';
+        expect(operation).toBeTruthy();
+        await expect(runUncertainOperation({ operation, requestId: `b14-row-${item.assetId}`, mutation: true, timeoutMs: 1, journal: new OperationJournal(), call: async () => new Promise<never>(() => undefined) })).rejects.toMatchObject({ category: 'ambiguousState' });
+        continue;
+      }
+      const reference = { left: 100, top: 200, right: item.orientation === 'portrait' ? 700 : 900, bottom: item.orientation === 'landscape' ? 600 : 1000 };
+      const placed = { left: 20, top: 30, right: 220, bottom: 430 };
+      const scale = scaleFor(reference, placed, item.fitMode);
+      const width = (placed.right - placed.left) * scale.percentX / 100;
+      const height = (placed.bottom - placed.top) * scale.percentY / 100;
+      const finalPlaced = { left: (reference.left + reference.right - width) / 2, top: (reference.top + reference.bottom - height) / 2, right: (reference.left + reference.right + width) / 2, bottom: (reference.top + reference.bottom + height) / 2 };
+      expect(checkFit(reference, finalPlaced, placed, item.fitMode, 0.5).every((check) => check.passed)).toBe(true);
+    }
+    expect(executed).toBe(corpus.length);
+  });
 });

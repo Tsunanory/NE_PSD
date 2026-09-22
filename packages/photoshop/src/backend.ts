@@ -1,4 +1,5 @@
-import { access, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   CapabilityReportSchema,
@@ -167,6 +168,37 @@ async function writeSafeEvidence(root: string, path: string, value: unknown): Pr
   const destination = await safeBundlePath(root, path, true);
   try { const existing = await lstat(destination); if (existing.isSymbolicLink() || !existing.isFile()) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence destination is not a regular file'); } catch (cause) { if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause; }
   await writeFile(destination, JSON.stringify(value));
+}
+
+type TraceRecord = { schemaVersion: 1; phase: 'pre' | 'post'; path: string; bytes: number; sha256: string };
+
+function traceRecords(value: unknown, jsonl: boolean): TraceRecord[] {
+  const values = jsonl ? (Array.isArray(value) ? value : [value]) : (isRecord(value) && Array.isArray(value.records) ? value.records : []);
+  return values.filter(isRecord).map((record) => ({ schemaVersion: record.schemaVersion as 1, phase: record.phase as 'pre' | 'post', path: record.path as string, bytes: record.bytes as number, sha256: record.sha256 as string }));
+}
+
+async function validateTrace(root: string, path: string): Promise<void> {
+  let destination: string;
+  try { destination = await safeBundlePath(root, path); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
+  let fileStat;
+  try { fileStat = await lstat(destination); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
+  if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `required trace evidence is not a regular file: ${path}`);
+  const content = await readFile(destination, 'utf8');
+  const jsonl = path.toLowerCase().endsWith('.jsonl') || content.trim().split('\n').filter(Boolean).length > 1;
+  let decoded: unknown;
+  try { decoded = jsonl ? content.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : JSON.parse(content); }
+  catch { throw new BackendError('TRACE_INVALID', `required trace evidence is not valid JSON or JSONL: ${path}`); }
+  const records = traceRecords(decoded, jsonl);
+  if (records.length < 2 || !records.some((record) => record.phase === 'pre') || !records.some((record) => record.phase === 'post')) throw new BackendError('TRACE_INVALID', `required trace evidence lacks real pre/post records: ${path}`);
+  for (const record of records) {
+    if (record.schemaVersion !== 1 || (record.phase !== 'pre' && record.phase !== 'post') || typeof record.path !== 'string' || !record.path || !Number.isInteger(record.bytes) || record.bytes <= 0 || !/^[a-f0-9]{64}$/.test(record.sha256)) throw new BackendError('TRACE_INVALID', `required trace record is malformed: ${path}`);
+    const referenced = await safeBundlePath(root, record.path);
+    const referencedStat = await stat(referenced).catch(() => undefined);
+    if (!referencedStat?.isFile() || referencedStat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `trace content is missing or not a regular file: ${record.path}`);
+    const bytes = await readFile(referenced);
+    const actual = createHash('sha256').update(bytes).digest('hex');
+    if (bytes.byteLength !== record.bytes || actual !== record.sha256) throw new BackendError('TRACE_INVALID', `trace content hash does not verify: ${record.path}`);
+  }
 }
 
 function errorFor(cause: unknown, fallback: string): BackendError {
@@ -362,13 +394,7 @@ export class PhotoshopBackend {
       for (const check of checks) {
         await writeSafeEvidence(canonicalRoot, check.evidencePath, { id: check.id, passed: check.passed });
       }
-      for (const path of [documentTracePath, toolTracePath]) {
-        let destination: string; try { destination = await safeBundlePath(canonicalRoot, path); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
-        let stat; try { stat = await lstat(destination); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
-        if (!stat.isFile() || stat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `required trace evidence is not a regular file: ${path}`);
-        let trace: unknown; try { trace = JSON.parse(await readFile(destination, 'utf8')); } catch { throw new BackendError('TRACE_INVALID', `required trace evidence is not valid JSON: ${path}`); }
-        if (!isRecord(trace) || (!('preBytes' in trace) && !('preSha256' in trace) && !('postBytes' in trace) && !('postSha256' in trace))) throw new BackendError('TRACE_INVALID', `required trace evidence lacks pre/post bytes or hashes: ${path}`);
-      }
+      for (const path of [documentTracePath, toolTracePath]) await validateTrace(canonicalRoot, path);
       const evidence = RenderEvidenceSchema.parse({
         schemaVersion: 1,
         jobId: request.jobId,
@@ -389,11 +415,7 @@ export class PhotoshopBackend {
       if (session && !cleanupComplete) {
         if (isAmbiguous(cause)) {
           if (!this.adapter.lock.markUnknownMutation) {
-            // Legacy/test adapters without a barrier primitive can still
-            // prove quiescent discard; production adapters must expose the
-            // barrier and take the fail-closed branch below.
-            try { acknowledgement(await session.discard(), 'discard', 'quiescent'); cleanupComplete = true; }
-            catch { throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'ambiguous render cannot retain the installation barrier', 'ambiguousState', [], false); }
+            throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'ambiguous render cannot retain the installation barrier; owned documents remain unreconciled', 'ambiguousState', [], false);
           } else {
             try { await this.adapter.lock.markUnknownMutation(); } catch { throw new BackendError('RECOVERY_BARRIER_PERSIST_FAILED', 'failed to persist the render recovery barrier', 'ambiguousState', [], false); }
           }

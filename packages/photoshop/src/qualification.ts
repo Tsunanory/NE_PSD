@@ -1,4 +1,4 @@
-import { access, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import sharp from 'sharp';
@@ -16,6 +16,7 @@ import {
   type LayerSelector,
   type QualificationRequest,
   type QualificationResult,
+  type Rect,
 } from '@ne-psd/contracts';
 import type { SessionLock } from './session-lock.js';
 import { sha256 as hashFile } from './working-copy.js';
@@ -45,7 +46,7 @@ export type ClippingResult = { clipped: true; adjacentToReference: true; prepare
 
 export class QualificationError extends Error {
   readonly name = 'QualificationError';
-  constructor(readonly code: string, message: string, readonly category: DomainError['category'] = 'validation') { super(`${code}: ${message}`); }
+  constructor(readonly code: string, message: string, readonly category: DomainError['category'] = 'validation', readonly retryable = category === 'transient', readonly evidencePaths: readonly string[] = []) { super(message); }
 }
 
 function idOf(value: LayerRef): string { return typeof value === 'string' ? value : value.id ?? stable(value); }
@@ -90,6 +91,9 @@ export async function ensureClipping(adapter: ClippingAdapter, input: LayerRef, 
 
 export type SentinelImagePrimitive = (path: string) => Promise<void>;
 export type QualificationExporter = (input: { variantId: '1' | '2' | '3'; sentinelPath: string; evidenceDirectory: string; workingTemplatePath: string }) => Promise<{ path: string }>;
+export type SentinelBaselineRecord = { targetId: string; region: Rect; path: string; bytes: number; sha256: string };
+export type SentinelBaseline = { records: readonly SentinelBaselineRecord[] };
+export type SentinelCorrespondence = { targetId: string; region: Rect; baselinePath: string; baselineBytes: number; baselineSha256: string; outputPath: string; outputBytes: number; outputSha256: string; evidencePath: string; passed: true };
 export type SentinelPropagationResult = { writes: Array<{ identity: string; target: string }>; routes: string[]; equivalentTargets: Record<string, string[]> };
 export type ContentAdapter = { getContentIdentity: (target: string) => Promise<string>; writeContent: (identity: string, sentinelPath: string) => Promise<unknown> };
 
@@ -128,6 +132,8 @@ export type QualificationAdapter = {
   savePropagation?: () => Promise<unknown>;
   reopenPropagation?: () => Promise<unknown>;
   exporter: QualificationExporter;
+  captureSentinelBaseline?: (targets: readonly string[], evidenceDirectory: string) => Promise<SentinelBaseline>;
+  verifySentinelCorrespondence?: (input: { variantId: '1' | '2' | '3'; sentinelPath: string; outputPath: string; baseline: SentinelBaselineRecord }) => Promise<SentinelCorrespondence>;
   setVariantVisibility: (variantId: '1' | '2' | '3') => Promise<unknown>;
   readVariantVisibility: () => Promise<RuntimeVisibility>;
   cleanup: () => Promise<void>;
@@ -136,7 +142,12 @@ export type QualificationAdapter = {
 };
 export type QualificationOptions = { adapter: QualificationAdapter; sentinel?: SentinelImagePrimitive; approvedCapability: true; approvedTemplateRoots: readonly string[]; approvedEvidenceRoots: readonly string[] };
 
-const domainError = (code: string, message: string, category: DomainError['category'] = 'validation', evidencePaths: string[] = []): DomainError => ({ code, category, message, retryable: category === 'transient', evidencePaths });
+const domainError = (code: string, message: string, category: DomainError['category'] = 'validation', evidencePaths: string[] = [], source?: unknown): DomainError => {
+  const value = source && typeof source === 'object' ? source as Record<string, unknown> : {};
+  const inherited = Array.isArray(value.evidencePaths) ? value.evidencePaths.filter((path): path is string => typeof path === 'string') : [];
+  const retryable = typeof value.retryable === 'boolean' ? value.retryable : category === 'transient';
+  return { code, category, message, retryable, evidencePaths: [...new Set([...inherited, ...evidencePaths])] };
+};
 let activeQualificationOutput: NonNullable<QualificationRequest['proposal']['output']> | undefined;
 function validateQualificationRequest(request: QualificationRequest): ReturnType<typeof contractValidateQualificationRequest> { activeQualificationOutput = request.proposal.output ?? undefined; return contractValidateQualificationRequest(request); }
 const pathEscape = (path: string): boolean => path.includes('\0') || path.split(/[\\/]+/).includes('..');
@@ -158,7 +169,27 @@ async function writeEvidence(root: string, relativePath: string, value: unknown)
   const destination = resolve(canonicalRoot, relativePath); try { if ((await lstat(destination)).isSymbolicLink()) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence destination is a symlink'); } catch (error) { if (error instanceof QualificationError) throw error; if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   await writeFile(destination, typeof value === 'string' || value instanceof Uint8Array ? value : JSON.stringify(value, null, 2)); return relativePath;
 }
-async function existsInside(root: string, relativePath: string): Promise<boolean> { if (pathEscape(relativePath) || relativePath.startsWith('/') || !within(resolve(root), resolve(root, relativePath))) return false; try { await access(resolve(root, relativePath)); return true; } catch { return false; } }
+async function canonicalExistingInside(root: string, targetPath: string): Promise<boolean> {
+  if (targetPath.includes('\0')) return false;
+  let canonicalRoot: string;
+  try { canonicalRoot = await realpath(root); } catch { return false; }
+  const target = isAbsolute(targetPath) ? resolve(targetPath) : resolve(canonicalRoot, targetPath);
+  let canonicalTarget: string; try { canonicalTarget = await realpath(target); } catch { return false; }
+  if (!within(canonicalRoot, canonicalTarget)) return false;
+  const parts = relative(canonicalRoot, canonicalTarget).split(/[\\/]/).filter(Boolean); let current = canonicalRoot;
+  for (const part of parts) {
+    current = resolve(current, part);
+    let stat; try { stat = await lstat(current); } catch { return false; }
+    if (stat.isSymbolicLink()) return false;
+  }
+  try { return (await lstat(canonicalTarget)).isFile(); } catch { return false; }
+}
+async function verifiedFile(root: string, path: string, bytes: number, sha256: string): Promise<boolean> {
+  if (!(await canonicalExistingInside(root, path)) || !Number.isInteger(bytes) || bytes <= 0 || !/^[a-f0-9]{64}$/.test(sha256)) return false;
+  const data = await readFile(isAbsolute(path) ? path : resolve(root, path));
+  return data.byteLength === bytes && createHash('sha256').update(data).digest('hex') === sha256;
+}
+function validRect(value: Rect): boolean { return Number.isFinite(value.left) && Number.isFinite(value.top) && Number.isFinite(value.right) && Number.isFinite(value.bottom) && value.right > value.left && value.bottom > value.top; }
 function selectorsFromInspection(inspection: InspectionReport, proposal: ConfigurationProposal): SelectorProof {
   const byId = new Map(inspection.candidates.map((candidate) => [candidate.candidateId, candidate]));
   const targets = proposal.targets.map((target) => { const t = byId.get(target.targetCandidateId); const r = byId.get(target.referenceCandidateId); const i = target.inputCandidateId === null ? null : byId.get(target.inputCandidateId); if (!t || !r || (target.inputCandidateId !== null && !i)) throw new QualificationError('PROPOSAL_CANDIDATE_MISSING', 'proposal candidate is absent from inspection'); return { targetCandidateId: target.targetCandidateId, referenceCandidateId: target.referenceCandidateId, inputCandidateId: target.inputCandidateId, target: t.selector, reference: r.selector, input: i?.selector ?? null }; });
@@ -230,28 +261,31 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       if (adapter.prepare) { checkpoint(signal); preparation = await adapter.prepare({ workingTemplatePath: copy.path, evidenceDirectory: request.evidenceDirectory, ...(signal ? { signal } : {}) }); checkpoint(signal); if (preparation.changed !== true) throw new QualificationError('PREPARATION_CHANGE_UNPROVEN', 'prepared path requires explicit changed:true'); if (!adapter.savePreparedCopy || !adapter.reopenPreparedCopy) throw new QualificationError('PREPARATION_LIFECYCLE_MISSING', 'changed preparation requires save and reopen primitives', 'capability'); checkpoint(signal); ack(await adapter.savePreparedCopy(copy.path), 'savePreparedCopy'); checkpoint(signal); ack(await adapter.reopenPreparedCopy(copy.path), 'reopenPreparedCopy'); checkpoint(signal); }
       else if (copy.noChangeProof?.acknowledged !== true) throw new QualificationError('PREPARATION_STATE_UNKNOWN', 'already-prepared copy requires explicit no-change proof');
       const preparedSha = await hashFile(copy.path); if (adapter.prepare && preparedSha === preparedBefore) throw new QualificationError('PREPARATION_CHANGE_UNPROVEN', 'prepared changed:true did not change copied bytes'); const selectors = await adapter.resolveSelectors({ workingTemplatePath: copy.path, inspection: request.inspection, proposal: request.proposal }); if (!validSelectorProof(selectors, preparedSha, request.inspection, request.proposal)) throw new QualificationError('SELECTOR_PROVENANCE_INVALID', 'selectors were not regenerated for every supplied candidate');
-      const geometry = await adapter.verifyGeometry(request.proposal.fitMode, selectors.targets.map((target) => target.targetCandidateId)); if (!geometry || geometry.passed !== true || !(await existsInside(request.evidenceDirectory, geometry.evidencePath))) throw new QualificationError('GEOMETRY_EVIDENCE_INVALID', 'measured geometry evidence is missing'); evidencePaths.push(geometry.evidencePath); checks.push({ id: 'geometry', passed: true, evidencePath: geometry.evidencePath });
-      const linkage = await adapter.verifyLinkage(); if (!linkage || linkage.passed !== true || !(await existsInside(request.evidenceDirectory, linkage.evidencePath))) throw new QualificationError('LINKAGE_EVIDENCE_INVALID', 'linkage evidence is missing'); evidencePaths.push(linkage.evidencePath); checks.push({ id: 'linkage', passed: true, evidencePath: linkage.evidencePath });
+      if (!adapter.captureSentinelBaseline || !adapter.verifySentinelCorrespondence) throw new QualificationError('SENTINEL_BASELINE_MISSING', 'true pre-mutation target-region and source-output correspondence primitives are required', 'capability');
+      const baseline = await adapter.captureSentinelBaseline(selectors.targets.map((target) => target.targetCandidateId), request.evidenceDirectory); const baselineByTarget = new Map(baseline.records.map((record) => [record.targetId, record]));
+      const baselineValid = baseline.records.length === selectors.targets.length && (await Promise.all(selectors.targets.map(async (target) => { const record = baselineByTarget.get(target.targetCandidateId); return Boolean(record && validRect(record.region) && await verifiedFile(request.evidenceDirectory, record.path, record.bytes, record.sha256)); }))).every(Boolean); if (!baselineValid) throw new QualificationError('SENTINEL_BASELINE_INVALID', 'pre-mutation target-region baseline is incomplete or hash-invalid');
+      const geometry = await adapter.verifyGeometry(request.proposal.fitMode, selectors.targets.map((target) => target.targetCandidateId)); if (!geometry || geometry.passed !== true || !(await canonicalExistingInside(request.evidenceDirectory, geometry.evidencePath))) throw new QualificationError('GEOMETRY_EVIDENCE_INVALID', 'measured geometry evidence is missing'); evidencePaths.push(geometry.evidencePath); checks.push({ id: 'geometry', passed: true, evidencePath: geometry.evidencePath });
+      const linkage = await adapter.verifyLinkage(); if (!linkage || linkage.passed !== true || !(await canonicalExistingInside(request.evidenceDirectory, linkage.evidencePath))) throw new QualificationError('LINKAGE_EVIDENCE_INVALID', 'linkage evidence is missing'); evidencePaths.push(linkage.evidencePath); checks.push({ id: 'linkage', passed: true, evidencePath: linkage.evidencePath });
       if (!adapter.inspectClipping && !adapter.readClipping) throw new QualificationError('CLIPPING_CAPABILITY_MISSING', 'clipping operation is not qualified', 'capability');
       const clippingAdapter: ClippingAdapter = {}; if (adapter.inspectClipping) clippingAdapter.inspectClipping = adapter.inspectClipping; if (adapter.readClipping) clippingAdapter.readClipping = adapter.readClipping; if (adapter.moveAbove) clippingAdapter.moveAbove = adapter.moveAbove; if (adapter.setClipping) clippingAdapter.setClipping = adapter.setClipping; if (adapter.preparePixelInput) clippingAdapter.preparePixelInput = adapter.preparePixelInput;
       for (const target of selectors.targets) await ensureClipping(clippingAdapter, target.input ?? target.target, target.reference, signal);
-      const clipping = await adapter.verifyClipping(); if (!clipping || clipping.passed !== true || !(await existsInside(request.evidenceDirectory, clipping.evidencePath))) throw new QualificationError('CLIPPING_EVIDENCE_INVALID', 'clipping evidence is missing'); evidencePaths.push(clipping.evidencePath); checks.push({ id: 'clipping', passed: true, evidencePath: clipping.evidencePath });
+      const clipping = await adapter.verifyClipping(); if (!clipping || clipping.passed !== true || !(await canonicalExistingInside(request.evidenceDirectory, clipping.evidencePath))) throw new QualificationError('CLIPPING_EVIDENCE_INVALID', 'clipping evidence is missing'); evidencePaths.push(clipping.evidencePath); checks.push({ id: 'clipping', passed: true, evidencePath: clipping.evidencePath });
       if (!adapter.getContentIdentity || !adapter.writeContent || !adapter.savePropagation || !adapter.reopenPropagation) throw new QualificationError('PROPAGATION_CAPABILITY_MISSING', 'resource identity, acknowledged write/save/reopen operations are required', 'capability');
       const propagation = await propagateSentinelByIdentity({ getContentIdentity: adapter.getContentIdentity, writeContent: adapter.writeContent }, selectors.targets.map((target) => target.targetCandidateId), sentinelPath, signal); if (propagation.writes.length === 0) throw new QualificationError('CONTENT_WRITES_MISSING', 'no content resource was written'); checkpoint(signal); ack(await adapter.savePropagation(), 'savePropagation'); checkpoint(signal); ack(await adapter.reopenPropagation(), 'reopenPropagation'); checkpoint(signal); const identityPath = await writeEvidence(request.evidenceDirectory, 'checks/identity.json', propagation); evidencePaths.push(identityPath); checks.push({ id: 'identity', passed: true, evidencePath: identityPath });
-      const hashes = new Map<string, string>(); for (const variant of ['1', '2', '3'] as const) { checkpoint(signal); ack(await adapter.setVariantVisibility(variant), 'setVariantVisibility'); checkpoint(signal); const visibility = await adapter.readVariantVisibility(); if (!visibility || visibility.visibleVariantIds.length !== 1 || visibility.visibleVariantIds[0] !== variant) throw new QualificationError('VARIANT_VISIBILITY_INVALID', `variant ${variant} visibility did not verify`); const result = await adapter.exporter({ variantId: variant, sentinelPath, evidenceDirectory: request.evidenceDirectory, workingTemplatePath: copy.path }); checkpoint(signal); if (!result || typeof result.path !== 'string') throw new QualificationError('EXPORT_EVIDENCE_INVALID', `variant ${variant} exporter did not return a file path`); const variantPath = result.path.startsWith('/') ? result.path : resolve(request.evidenceDirectory, result.path); if (!within(resolve(request.evidenceDirectory), resolve(variantPath))) throw new QualificationError('EXPORT_PATH_ESCAPE', `variant ${variant} path escaped evidence root`); const relativePath = relative(resolve(request.evidenceDirectory), resolve(variantPath)).replaceAll('\\', '/'); const digest = await inspectExport(variantPath, variant); if (hashes.has(digest)) throw new QualificationError('VARIANT_DUPLICATE', `variant ${variant} is identical to another variant`); hashes.set(digest, variant); evidencePaths.push(relativePath); checks.push({ id: `variant-${variant}`, passed: true, evidencePath: relativePath }); }
+      const hashes = new Map<string, string>(); for (const variant of ['1', '2', '3'] as const) { checkpoint(signal); ack(await adapter.setVariantVisibility(variant), 'setVariantVisibility'); checkpoint(signal); const visibility = await adapter.readVariantVisibility(); if (!visibility || visibility.visibleVariantIds.length !== 1 || visibility.visibleVariantIds[0] !== variant) throw new QualificationError('VARIANT_VISIBILITY_INVALID', `variant ${variant} visibility did not verify`); const result = await adapter.exporter({ variantId: variant, sentinelPath, evidenceDirectory: request.evidenceDirectory, workingTemplatePath: copy.path }); checkpoint(signal); if (!result || typeof result.path !== 'string') throw new QualificationError('EXPORT_EVIDENCE_INVALID', `variant ${variant} exporter did not return a file path`); const variantPath = isAbsolute(result.path) ? result.path : resolve(request.evidenceDirectory, result.path); if (!(await canonicalExistingInside(request.evidenceDirectory, variantPath))) throw new QualificationError('EXPORT_PATH_ESCAPE', `variant ${variant} path escaped evidence root or traversed a symlink`); const canonicalEvidenceRoot = await realpath(request.evidenceDirectory); const canonicalVariantPath = await realpath(variantPath); const relativePath = relative(canonicalEvidenceRoot, canonicalVariantPath).replaceAll('\\', '/'); const digest = await inspectExport(canonicalVariantPath, variant); if (hashes.has(digest)) throw new QualificationError('VARIANT_DUPLICATE', `variant ${variant} is identical to another variant`); hashes.set(digest, variant); const outputBytes = await readFile(canonicalVariantPath); const outputSha256 = createHash('sha256').update(outputBytes).digest('hex'); for (const target of selectors.targets) { const targetBaseline = baselineByTarget.get(target.targetCandidateId); if (!targetBaseline) throw new QualificationError('SENTINEL_BASELINE_INVALID', `variant ${variant} has no intended target region for ${target.targetCandidateId}`); const correspondence = await adapter.verifySentinelCorrespondence({ variantId: variant, sentinelPath, outputPath: canonicalVariantPath, baseline: targetBaseline }); if (!correspondence || correspondence.passed !== true || correspondence.targetId !== target.targetCandidateId || !same(correspondence.region, targetBaseline.region) || correspondence.baselinePath !== targetBaseline.path || correspondence.baselineBytes !== targetBaseline.bytes || correspondence.baselineSha256 !== targetBaseline.sha256 || correspondence.outputPath !== canonicalVariantPath || correspondence.outputBytes !== outputBytes.byteLength || correspondence.outputSha256 !== outputSha256 || !(await canonicalExistingInside(request.evidenceDirectory, correspondence.evidencePath))) throw new QualificationError('SENTINEL_CORRESPONDENCE_INVALID', `variant ${variant} source-to-output target correspondence was not independently verified for ${target.targetCandidateId}`); evidencePaths.push(correspondence.evidencePath); checks.push({ id: `sentinel-correspondence-${variant}-${target.targetCandidateId}`, passed: true, evidencePath: correspondence.evidencePath }); } evidencePaths.push(relativePath); checks.push({ id: `variant-${variant}`, passed: true, evidencePath: relativePath }); }
       const originalAfter = await hashFile(request.workingTemplatePath); const closureUnchanged = (await Promise.all(copy.closure.map(async (entry) => (await hashFile(entry.originalPath)) === entry.sha256))).every(Boolean); const originalsVerified = await copy.verifyOriginals(); if (!originalsVerified || !closureUnchanged || originalAfter !== originalMaster) throw new QualificationError('SOURCE_MUTATED', 'master or linked source verification failed'); const sourcePath = await writeEvidence(request.evidenceDirectory, 'checks/source-integrity.json', { master: { path: request.workingTemplatePath, before: originalMaster, after: originalAfter }, closure: copy.closure }); evidencePaths.push(sourcePath); checks.push({ id: 'source-integrity', passed: true, evidencePath: sourcePath });
       await clean(); const post = await adapter.snapshot('post'); evidencePaths.push(await writeEvidence(request.evidenceDirectory, 'snapshots/post.json', post)); checks.push({ id: 'cleanup', passed: true, evidencePath: 'snapshots/post.json' });
-      for (const path of evidencePaths) if (pathEscape(path) || path.startsWith('/') || !(await existsInside(request.evidenceDirectory, path))) throw new QualificationError('EVIDENCE_INCOMPLETE', `missing evidence ${path}`);
+      for (const path of evidencePaths) if (pathEscape(path) || path.startsWith('/') || !(await canonicalExistingInside(request.evidenceDirectory, path))) throw new QualificationError('EVIDENCE_INCOMPLETE', `missing evidence ${path}`);
       const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, fileRef(copy.path, preparedSha, `${request.inspection.template.rootId}:qualification`), selectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
     } catch (cause) {
       let barrierFailure: unknown;
-      if (!(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN') || cause instanceof Error && /unknown|timeout|lost reply|uncertain|mutation|cleanup/i.test(cause.message)) {
+      if (!(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN')) {
         if (!adapter.lock.markUnknownMutation) barrierFailure = new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'qualification barrier persistence is unavailable', 'ambiguousState');
         else try { await adapter.lock.markUnknownMutation(); } catch (error) { barrierFailure = new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'qualification barrier persistence failed', 'ambiguousState'); }
       }
       let cleanupFailure: unknown;
       try { await clean(); } catch (error) { cleanupFailure = error; if (!adapter.lock.markUnknownMutation) barrierFailure ??= new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'cleanup failure cannot retain the recovery barrier', 'ambiguousState'); else try { await adapter.lock.markUnknownMutation(); } catch { barrierFailure ??= new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'cleanup failure barrier persistence failed', 'ambiguousState'); } }
-      const primary = barrierFailure ?? cleanupFailure ?? cause; const failure = primary instanceof QualificationError ? primary : new QualificationError('CLEANUP_FAILED', primary instanceof Error ? primary.message : String(primary), 'ambiguousState'); const existing = []; for (const path of evidencePaths) if (await existsInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing)], checks.map((check) => ({ ...check, passed: false })), existing);
+      const primary = barrierFailure ?? cleanupFailure ?? cause; const source = primary && typeof primary === 'object' ? primary as Record<string, unknown> : {}; const failure = primary instanceof QualificationError ? primary : new QualificationError(typeof source.code === 'string' ? source.code : 'CLEANUP_FAILED', primary instanceof Error ? primary.message : typeof source.message === 'string' ? source.message : String(primary), (typeof source.category === 'string' && ['validation', 'capability', 'transient', 'ambiguousState', 'review', 'cancelled'].includes(source.category) ? source.category : 'ambiguousState') as DomainError['category'], typeof source.retryable === 'boolean' ? source.retryable : false, Array.isArray(source.evidencePaths) ? source.evidencePaths.filter((path): path is string => typeof path === 'string') : []); const existing = []; for (const path of evidencePaths) if (await canonicalExistingInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing, failure)], checks.map((check) => ({ ...check, passed: false })), existing);
     }
   };
   try { return await adapter.lock.runExclusive(`qualification-${request.inspection.inspectionId}`, execute, signal); } catch (cause) {

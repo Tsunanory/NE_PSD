@@ -1,6 +1,12 @@
 # Photoshop MCP tool qualification
 
-Status: `implemented-and-fake-tested`; live Photoshop qualification is blocked because no Photoshop installation is available on this host.
+Status: `implemented-and-fake-tested`; B15 live qualification is `blocked-external` because no Photoshop installation is available on this host.
+
+## Pinned primary package evidence
+
+The selected primary is `@alisaitteke/photoshop-mcp` 1.7.19. The foundation runtime lock records source commit `143b69dba18dc5992c56a5d489b6efbfed173e1a`, package integrity `sha512-UEsZLBCuSh0TqVpKul6n2BVu3DW/G1gJ6oD8LwLAzBL7eaLTwtay3oSPDf/YHCL8ypvzXQlJEzwsaveCzEzXuA==`, and license `MIT`. The installed package's `LICENSE` is the MIT text with copyright `2026 Ali Sait Teke`; it grants use, modification and distribution subject to retaining the notice and provides no warranty. This records package evidence only; it does not prove live Photoshop behavior.
+
+The locked launch contract is an absolute Node 22.23.2 executable followed by an argument array whose first element is the absolute vendored `node_modules/@alisaitteke/photoshop-mcp/dist/index.js` entry. No shell, `npx`, network fetch, arbitrary script executor or generated JSX/UXP is allowed. A live `tools/list` response must be captured, canonicalized and hashed before any semantic call. Exact input/output schemas, units, active-document behavior, mutation flags, timeout observations and source locations remain unqualified until that capture is made.
 
 The B02 unit fixture at `tests/photoshop/fixtures/tool-schema.synthetic.json` is explicitly synthetic. It is not upstream evidence and does not claim that `fixture_scale` exists in Photoshop MCP. The adapter computes a canonical SHA-256 digest for every `tools/list` response and rejects a changed pinned digest before any call.
 
