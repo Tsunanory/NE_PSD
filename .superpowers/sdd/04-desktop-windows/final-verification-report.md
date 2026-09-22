@@ -2,7 +2,7 @@
 
 Date: 2026-09-22  
 Audited range: `0fc4a7039ae9ae83a68440001f77f11058e8f5de..631c73afff6c53b0cc0748bb8cfde676c1fedbf8`  
-Correction commit: pending
+Correction commit: `c56d1063e7a624ebd09e403459d0a83a5e9b203a` (`fix(desktop): finalize lane verification and shell wiring`).
 
 ## Matrix
 
