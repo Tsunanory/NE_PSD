@@ -252,7 +252,9 @@ function translationCommand(capabilities: PlacementCapabilities, normalized: { d
   const semantics = capabilities.translationSemantics;
   const compensatedCenter = compensation ? { x: referenceCenter.x + compensation.dx, y: referenceCenter.y + compensation.dy } : referenceCenter;
   const payload = semantics === 'delta'
-    ? { dx: normalized.dx + (compensation?.dx ?? 0), dy: normalized.dy + (compensation?.dy ?? 0) }
+    // Delta commands already carry the measured residual.  Applying the
+    // residual once as a payload and once as compensation moves twice.
+    ? { dx: normalized.dx, dy: normalized.dy }
     : semantics === 'absolute-center'
       ? { centerX: compensatedCenter.x, centerY: compensatedCenter.y }
       : { x: compensatedCenter.x, y: compensatedCenter.y };
@@ -271,7 +273,8 @@ function correctionAllowed(checks: FitCheck[], delta: { dx: number; dy: number }
   // A qualified tool may round to more than the final acceptance tolerance;
   // keep the correction bounded relative to that tolerance and never accept
   // an unbounded or unexplained residual.
-  return declared && Number.isFinite(bound) && bound >= 0 && bound <= tolerancePx * 4
+  const maxBound = capabilities.translationSemantics === 'delta' ? Math.max(tolerancePx * 4, capabilities.translationRoundingPx) : tolerancePx * 4;
+  return declared && Number.isFinite(bound) && bound >= 0 && bound <= maxBound
     && Math.abs(delta.dx) <= bound && Math.abs(delta.dy) <= bound;
 }
 
@@ -302,7 +305,10 @@ async function runPlacement(request: PlacementRequest): Promise<PlacementResult>
   const mutation = targetIdentity.kind === 'smartObject' && adapter.replaceContents ? adapter.replaceContents : adapter.place;
   const operation = targetIdentity.kind === 'smartObject' && adapter.replaceContents ? 'replaceContents' : 'place';
   if (!mutation) throw new PlacementError('CAPABILITY_MISSING', 'no qualified place or replace operation is available', { outcome: 'blocked' });
-  const existingIds = operation === 'place' && adapter.existingLayerIds ? new Set(await adapter.existingLayerIds(targetIdentity.documentId)) : undefined;
+  if (operation === 'place' && !adapter.existingLayerIds) {
+    throw new PlacementError('CAPABILITY_MISSING', 'ordinary place requires a preexisting layer-ID inventory', { outcome: 'blocked' });
+  }
+  const existingIds = operation === 'place' ? new Set(await adapter.existingLayerIds!(targetIdentity.documentId)) : undefined;
   abortIfNeeded(signal);
   const placedResponse = await issueWithEvidence(operation, fitMode, evidence, { documentId: targetIdentity.documentId, layerId: targetIdentity.layerId }, () => mutation(targetIdentity, input));
   const placedIdentity = operation === 'replaceContents' ? returnedIdentity(placedResponse, targetIdentity) : parseIdentity(placedResponse);
@@ -315,7 +321,8 @@ async function runPlacement(request: PlacementRequest): Promise<PlacementResult>
     if (placedIdentity.documentId !== targetIdentity.documentId || placedIdentity.layerId === targetIdentity.layerId || existingIds?.has(placedIdentity.layerId)) {
       throw new PlacementError('UNEXPECTED_IDENTITY', 'place returned a missing, colliding, or wrong-document layer identity');
     }
-    if (expectedPlacedKind && placedIdentity.kind !== expectedPlacedKind) throw new PlacementError('UNEXPECTED_IDENTITY', 'place returned a layer with an unexpected kind');
+    if (!expectedPlacedKind) throw new PlacementError('CAPABILITY_MISSING', 'ordinary place requires an expected placed layer kind', { outcome: 'blocked' });
+    if (placedIdentity.kind !== expectedPlacedKind) throw new PlacementError('UNEXPECTED_IDENTITY', 'place returned a layer with an unexpected kind');
   } else if (placedIdentity.layerId !== targetIdentity.layerId || placedIdentity.documentId !== targetIdentity.documentId) {
     throw new PlacementError('UNEXPECTED_IDENTITY', 'replaceContents changed the target identity');
   }
