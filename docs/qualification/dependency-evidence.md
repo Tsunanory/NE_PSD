@@ -64,3 +64,12 @@ The Node 22 audit reported 13 vulnerable package nodes (12 high, 1 critical). Ad
 - Exact local Qwen artifact and vision qualification are unqualified; no fallback is permitted.
 
 `.npmrc` retains `legacy-peer-deps=true` because the pinned Vitest peer-resolution defect prevents a clean exact-lockfile install without it.
+
+## Dependency request: worker B lease and owned-source boundary
+
+Task 2 remains blocked pending a reviewed worker-B contract. Task 3 must not start.
+
+1. Lease safety: provide an OS-visible lease/diagnostics proof that distinguishes positively safe release from retained ambiguous mutation state. The contract must cover stale owner records, dead MCP child with an outstanding Photoshop mutation, timeout immediately after save, pause during export, and cancellation between variants. A timestamp or client `finally` is not proof of safe release; recovery must be read-only and explicit.
+2. Owned source handoff: provide a reviewed contract requiring B to render from the job-owned source copy, with linked dependencies and scratch isolation represented explicitly in `RenderRequest` or an equivalent reviewed interface. The handoff must include source/dependency digests and ownership paths so core can verify the copied bytes and confined cleanup.
+
+Until B supplies and reviews both contracts, core fake tests are development evidence only and do not establish Photoshop safety or live qualification.
