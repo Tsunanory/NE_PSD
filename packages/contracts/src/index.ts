@@ -32,6 +32,10 @@ import { QualificationRequestSchema, QualificationResultSchema, TemplateCandidat
 import type { ConfigurationProposal, InspectionReport, JobSpec, ModelProfile, ReviewDecision } from './domain.js';
 import type { QualificationResult, QualificationRequest } from './models.js';
 
+function containsTestOnlyPath(paths: readonly string[]): boolean {
+  return paths.some((path) => path === 'testOnly' || path.startsWith('testOnly/'));
+}
+
 export function validateConfigurationProposal(proposal: ConfigurationProposal, inspection: InspectionReport) {
   const parsed = ConfigurationProposalSchema.safeParse(proposal);
   if (!parsed.success) return { success: false as const, error: parsed.error };
@@ -51,6 +55,12 @@ export function validateQualificationRequest(request: unknown) {
   if (!parsed.success) return { success: false as const, error: parsed.error };
   const validated = validateConfigurationProposal(parsed.data.proposal, parsed.data.inspection);
   if (!validated.success) return validated;
+  const evidencePaths = [
+    ...parsed.data.inspection.evidencePaths,
+    ...(parsed.data.inspection.capabilities?.evidencePaths ?? []),
+    ...parsed.data.proposal.facts.flatMap((fact) => fact.evidenceRefs),
+  ];
+  if (containsTestOnlyPath(evidencePaths)) return { success: false as const, error: new Error('test-only evidence cannot qualify a live template') };
   if (parsed.data.inspection.evidenceStatus !== 'liveObserved' || parsed.data.inspection.capabilities === null) return { success: false as const, error: new Error('qualification requires live inspection and capabilities') };
   return { success: true as const, data: parsed.data };
 }
@@ -58,6 +68,7 @@ export function validateQualificationRequest(request: unknown) {
 export function validateQualificationResult(result: unknown, request: QualificationRequest) {
   const parsed = QualificationResultSchema.safeParse(result);
   if (!parsed.success) return { success: false as const, error: parsed.error };
+  if (containsTestOnlyPath([...parsed.data.evidencePaths, ...parsed.data.checks.map((check) => check.evidencePath)])) return { success: false as const, error: new Error('test-only evidence cannot qualify a live template') };
   const validatedRequest = validateQualificationRequest(request);
   if (!validatedRequest.success) return validatedRequest;
   const capabilities = request.inspection.capabilities;
