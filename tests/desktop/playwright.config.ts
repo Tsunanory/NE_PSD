@@ -1,2 +1,2 @@
 import { defineConfig } from 'playwright/test';
-export default defineConfig({ testDir: '.', testMatch: /shell\.e2e\.test\.ts/ });
+export default defineConfig({ testDir: '.', testMatch: /.*\.e2e\.test\.ts/ });

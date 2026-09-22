@@ -1,0 +1,1 @@
+import React from 'react'; export function AssetSetup({ label }: { label: string }): React.ReactElement { return <section><h2>Исходные изображения</h2><p>{label}</p><button type="button">Выбрать входную папку</button></section>; }

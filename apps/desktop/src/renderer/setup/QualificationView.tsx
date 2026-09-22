@@ -1,0 +1,2 @@
+import React from 'react'; import type { SetupStatus } from './setup-state.js';
+export function QualificationView({ status }: { status: SetupStatus }): React.ReactElement { const label = status === 'qualified' ? 'Шаблон квалифицирован сервисом' : status === 'blocked' ? 'Квалификация заблокирована' : 'Синтетические данные; шаблон не квалифицирован'; return <section aria-live="polite"><h2>Квалификация</h2><p>{label}</p><p>Неподтверждённый шаблон нельзя передать в JobService.start.</p></section>; }

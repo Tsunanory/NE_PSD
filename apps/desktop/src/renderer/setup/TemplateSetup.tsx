@@ -1,0 +1,1 @@
+import React from 'react'; export function TemplateSetup({ label }: { label: string }): React.ReactElement { return <section><h2>PSD-шаблон</h2><p>{label}</p><button type="button">Выбрать PSD</button></section>; }
