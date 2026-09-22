@@ -8,8 +8,27 @@ export type JsonSchema = {
   [key: string]: unknown;
 };
 export type ToolDefinition = { name: string; inputSchema?: JsonSchema; outputSchema?: JsonSchema };
-export type SemanticOperation = 'scale' | 'translate' | 'place' | 'replaceContents' | 'setClipping' | 'setVisibility' | 'export';
-export type ToolSemantics = { scale?: 'uniform-percent' | 'independent-percent'; translation?: 'absolute' | 'absolute-center' | 'delta' };
+export type SemanticOperation = 'scale' | 'translate' | 'place' | 'replaceContents' | 'setClipping' | 'setVisibility' | 'export' | 'convertProfile' | 'resize' | 'flatten';
+export type ExportToolSemantics = {
+  qualityUnit: '1-100' | '0-12';
+  qualityField?: string;
+  formats: readonly ('jpeg' | 'png')[];
+  actualPixelsToSrgb: true;
+  renderingIntent: 'relative-colorimetric' | 'perceptual' | 'absolute-colorimetric' | 'saturation';
+  embeddedProfile: 'sRGB';
+  mode: 'RGB';
+  bitDepth: 8;
+  alpha: 'preserve' | 'opaque' | 'format-dependent';
+};
+export type ColorToolSemantics = {
+  actualPixels: true;
+  renderingIntent: 'relative-colorimetric' | 'perceptual' | 'absolute-colorimetric' | 'saturation';
+  embeddedProfile: 'sRGB';
+  mode: 'RGB';
+  bitDepth: 8;
+};
+export type VisibilityToolSemantics = { acknowledged: true; rereadsEffectiveAncestor: true; variantIds: readonly ['1', '2', '3'] };
+export type ToolSemantics = { scale?: 'uniform-percent' | 'independent-percent'; translation?: 'absolute' | 'absolute-center' | 'delta'; export?: ExportToolSemantics; color?: ColorToolSemantics; visibility?: VisibilityToolSemantics };
 export type ToolEvidence = 'synthetic-fixture' | 'live-qualified' | 'missing-live-proof';
 export type ToolMapEntry = {
   operation: SemanticOperation;
@@ -48,6 +67,24 @@ function validateSemantics(binding: QualifiedToolBinding): void {
       : binding.semantics.translation === 'absolute-center' ? 'centerX' in properties && 'centerY' in properties
         : 'dx' in properties && 'dy' in properties;
     if (!valid) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'translate schema does not match declared coordinate semantics');
+  }
+  if (binding.operation === 'export') {
+    const semantics = binding.semantics.export;
+    if (!semantics || semantics.actualPixelsToSrgb !== true || semantics.embeddedProfile !== 'sRGB' || semantics.mode !== 'RGB' || semantics.bitDepth !== 8 || semantics.formats.length === 0 || !['preserve', 'opaque', 'format-dependent'].includes(semantics.alpha)) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export binding must prove actual-pixel sRGB, RGB/8, format and alpha support');
+    if (!semantics.renderingIntent) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export binding must qualify rendering intent');
+    const quality = semantics.qualityField ?? 'quality';
+    const schema = properties[quality] as JsonSchema | undefined;
+    if (semantics.qualityUnit === '1-100' && (!schema || !(binding.inputSchema.required ?? []).includes(quality) || schema.type !== 'number' || schema.minimum !== 1 || schema.maximum !== 100)) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export schema does not prove quality units 1..100');
+    if (semantics.qualityUnit === '0-12') throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'backend quality units are not the shared 1..100 contract');
+    if (semantics.formats.some((format) => !['jpeg', 'png'].includes(format))) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'export schema contains an unsupported format');
+  }
+  if (binding.operation === 'setVisibility') {
+    const semantics = binding.semantics.visibility;
+    if (!semantics || semantics.acknowledged !== true || semantics.rereadsEffectiveAncestor !== true || semantics.variantIds.join(',') !== '1,2,3') throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'visibility binding must prove acknowledged effective ancestor rereads for exactly IDs 1,2,3');
+  }
+  if (binding.operation === 'convertProfile') {
+    const semantics = binding.semantics.color;
+    if (!semantics || semantics.actualPixels !== true || semantics.embeddedProfile !== 'sRGB' || semantics.mode !== 'RGB' || semantics.bitDepth !== 8 || !semantics.renderingIntent) throw new ToolMapError('TOOL_SEMANTICS_MISMATCH', 'color binding must prove actual-pixel sRGB conversion and RGB/8 intent');
   }
 }
 
