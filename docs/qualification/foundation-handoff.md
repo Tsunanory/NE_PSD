@@ -29,7 +29,7 @@ npm run test:contracts  PASS
 
 The full contract result was `Test Files 5 passed (5)` and `Tests 33 passed (33)`.
 
-The available shell reported Node `v25.9.0` and npm `11.12.1`; the committed project runtime remains Node `22.23.2`/npm `10.9.8`. The installed Node 22 binary could not start because its Homebrew `simdutf` dylib was absent. Re-run the commands under the qualified runtime before live release qualification.
+The required proof ran with Node `v22.23.2` and npm `10.9.8` using `/private/tmp/node-v22.23.2-darwin-arm64/bin`. No runtime mismatch remains for this handoff.
 
 ## Dependency and export boundary
 
@@ -39,7 +39,7 @@ Sharp remains exactly pinned at `0.35.4` and is now declared directly by `@ne-ps
 
 `FakePhotoshop` records deterministic operations, supports injected clocks and failure schedules, generates three Sharp-decodable JPEG/PNG artifacts at the requested dimensions, and records matching render evidence. `FakeIntelligence` returns pass/revise/blocked decisions with exactly three variant review IDs or rejects invalid JSON. `FakeJobService` implements every frozen `JobService` method and emits strictly increasing event sequence numbers. `FakeSetupService` distinguishes static and live inspection fixtures. Storage schedules and named scenarios are extensible through constructor configuration rather than cross-track edits.
 
-The registry in `requirements-v1.json` contains the exact 15 mandatory IDs. Every entry names an implementation path, automated test, and live qualification evidence owner. `policy.v1.json` carries the same IDs/evaluators. `VISUAL.QUALIFIED` remains model/human-gated; the other 14 checks are deterministic and cannot be promoted by a model.
+The registry in `requirements-v1.json` contains the exact 15 mandatory IDs. Every entry names an implementation path, automated test, and live qualification evidence owner. `policy.v1.json` carries the same IDs/evaluators. `VISUAL.QUALIFIED` remains model/human-gated; the remaining 14 checks are deterministic and cannot be promoted by a model.
 
 ## Known external gates
 
