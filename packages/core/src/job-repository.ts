@@ -133,7 +133,7 @@ export class JobRepository {
       const failed = this.db.prepare("SELECT asset_id FROM assets WHERE job_id=? AND status='failed'").all(jobId) as Array<{ asset_id: string }>;
       const allowed = new Set(failed.map((asset) => asset.asset_id));
       const chosen = selectedAssetIds ? [...selectedAssetIds] : [...allowed];
-      if (chosen.length === 0 || chosen.some((id) => !allowed.has(id))) throw Object.assign(new Error('no valid failed assets to retry; blocked review work requires recovery'), { code: 'NO_FAILED_ASSETS' });
+      if (chosen.length === 0 || new Set(chosen).size !== chosen.length || chosen.some((id) => !allowed.has(id))) throw Object.assign(new Error('no valid failed assets to retry; blocked review work requires recovery'), { code: 'NO_FAILED_ASSETS' });
       const spec = JSON.parse(source.spec_json) as JobSpec;
       const successor: JobSpec = { ...spec, jobId: randomUUID(), assets: spec.assets.filter((asset) => chosen.includes(asset.assetId)) };
       this.createJob(successor, jobId);
