@@ -8,6 +8,7 @@ export default defineConfig({
   root: repositoryRoot,
   test: {
     include: ['tests/desktop/**/*.test.ts'],
+    exclude: ['tests/desktop/**/*.e2e.test.ts'],
     environment: 'node'
   }
 });
