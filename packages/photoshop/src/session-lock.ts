@@ -61,6 +61,7 @@ export class SessionLock {
   }
 
   private metadataPath(): string { return `${this.options.lockPath}/owner.json`; }
+  get journalPath(): string { return this.owner?.journalPath ?? join(this.options.lockPath, 'journal', 'pending.jsonl'); }
   private installationPath(): string { return canonicalInstallation(this.options.installationPath); }
   private processStart(): string { return this.options.processStartIdentity; }
 
@@ -123,9 +124,29 @@ export class SessionLock {
   async heartbeat(): Promise<void> { await this.update((m) => { m.heartbeatAt = this.options.now(); }); }
   async beginCall(): Promise<void> { await this.update((m) => { m.inFlight += 1; }); }
   async endCall(): Promise<void> { await this.update((m) => { m.inFlight = Math.max(0, m.inFlight - 1); }); }
-  async markUnknownMutation(): Promise<void> { await this.update((m) => { m.unknownMutation = true; }); }
-  async reconcile(): Promise<void> { await this.update((m) => { m.unknownMutation = false; m.reconciledJobOwnedDocuments = true; }); }
+  async markUnknownMutation(): Promise<void> { await this.update((m) => { m.unknownMutation = true; m.reconciledJobOwnedDocuments = false; }); }
+  async reconcile(): Promise<void> {
+    await this.update((m) => { m.unknownMutation = false; m.reconciledJobOwnedDocuments = true; });
+    if (this.owner?.inFlight === 0) await this.release();
+  }
+  async clearRecoveryBarrier(): Promise<void> { await this.reconcile(); }
   async markDocumentsUnreconciled(): Promise<void> { await this.update((m) => { m.reconciledJobOwnedDocuments = false; }); }
+
+  /** Run reconciliation under the retained owner without acquiring a second lock. */
+  async runRecovery<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!this.owner) throw new SessionLockError('RECOVERY_REQUIRED', 'recovery requires the retained installation owner');
+    if (signal?.aborted) throw new SessionLockError('CANCELLED', 'recovery cancelled before dispatch');
+    await this.beginCall();
+    let result: T | undefined;
+    try {
+      result = await fn();
+      return result;
+    } finally {
+      await this.endCall();
+      const safe = result !== undefined && typeof result === 'object' && result !== null && (result as { safe?: unknown }).safe === true;
+      if (safe && this.owner && !this.owner.unknownMutation && this.owner.reconciledJobOwnedDocuments) await this.release();
+    }
+  }
 
   async runExclusive<T>(operationId: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) throw new SessionLockError('CANCELLED', 'operation cancelled while queued');

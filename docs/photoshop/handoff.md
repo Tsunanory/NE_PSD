@@ -17,6 +17,8 @@ B02 inherited blocker: Windows launch-path whitespace rejection remains governed
 
 Status: implemented-and-fake-tested.
 
+Commit: `be5f0c3` (`fix(photoshop): recover ambiguous operations without replay`).
+
 The backend transaction boundary is `packages/photoshop/src/backend.ts`, exported from the package entry point. It validates the sealed profile and runtime tool binding, holds one installation lock for the complete asset, creates a fresh adapter-owned working session, opens and verifies the graph, deduplicates proven content resources, performs placement/fit/clipping through the session, verifies propagation and source hashes, exports exactly three variants through B11, writes relative evidence, discards owned documents, and returns `RenderEvidence`. Qualification is delegated directly to B10's qualifier with the same adapter lock; B12 does not seal candidates or retry mutations.
 
 Verification before handoff:
@@ -35,5 +37,21 @@ The B12 correction adds runtime validation for typed `acknowledged` lifecycle pr
 Required fake coverage now includes malformed lifecycle acknowledgements, unsealed profiles, ambiguous mutation preservation without discard, existing trace retention, source/dependency bytes, referenced evidence files, and strict two-asset discard ordering. The inherited B04 selector failure remains unchanged.
 
 ## B05 known blocker
+
+## B13 timeout and recovery handoff
+
+Status: implemented-and-fake-tested.
+
+The recovery boundary is `packages/photoshop/src/recovery.ts`. `OperationJournal` appends an issued record before dispatch and a terminal record after acknowledgement, failure, or explicit reconciliation. `runUncertainOperation` dispatches each operation once, applies fixed failure-detection ceilings (metadata reads 15 seconds; open/place/replace 120 seconds; save/export 180 seconds), never aborts the underlying Photoshop call on caller timeout, and converts post-dispatch timeout, cancellation, transport loss, and process loss into non-retryable `ambiguousState` errors. The local MCP barrier rejects further calls until explicit idle/document/hash reconciliation. `SessionLock` retains its OS-visible lock while the barrier is set and exposes retained-owner recovery; successful reconciliation releases it. `PhotoshopBackend.recover` runs inside that retained owner when available.
+
+Verification:
+
+- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run test:photoshop -- tests/photoshop/recovery.test.ts`: 13 passed.
+- Focused B13 regression set (`recovery`, `mcp-client`, `session-lock`, `backend`): 39 passed.
+- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run check`: passed.
+- Full `npm run test:photoshop`: 149 passed, 1 inherited B04 selector failure at `tests/photoshop/selectors.test.ts:89` (`SELECTOR_DOCUMENT_ROUTE_MISMATCH` expected, `SELECTOR_MISSING` received). B13 does not modify B04.
+- `git diff --check`: passed.
+
+Limitations: live Photoshop acknowledgement, idle/status primitive, process-death reconciliation, and Windows qualification remain untested. Recovery never replays a mutation or re-exports an ambiguous filename; operator reconciliation or a new attempt is required after an unresolved barrier. Source/master/dependency preservation remains enforced by B12's transaction boundary and is not weakened by B13.
 
 B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.

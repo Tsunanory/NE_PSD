@@ -3,11 +3,21 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { canonicalize } from '@ne-psd/contracts';
 import { buildToolMap, toolSchemaDigest, type SemanticOperation, type ToolDefinition, type ToolMapEntry } from './tool-map.js';
 import type { SessionLock } from './session-lock.js';
+import { OperationJournal, RecoveryError, operationTimeoutMs, runUncertainOperation } from './recovery.js';
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
-export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall): Promise<unknown> };
-export type Trace = { requestId: string; toolName: string; arguments: unknown; outcome: 'acknowledged' | 'failed'; errorCode?: string };
-export class McpClientError extends Error { constructor(public readonly code: string, message: string, public readonly details?: unknown) { super(message); this.name = 'McpClientError'; } }
+export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall, signal?: AbortSignal): Promise<unknown> };
+export type Trace = { requestId: string; toolName: string; arguments: unknown; outcome: 'acknowledged' | 'failed' | 'unknown'; errorCode?: string };
+export class McpClientError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly details?: unknown,
+    public readonly category: 'validation' | 'capability' | 'transient' | 'ambiguousState' | 'cancelled' = 'validation',
+    public readonly retryable = category === 'transient',
+    public readonly evidencePaths: readonly string[] = [],
+  ) { super(message); this.name = 'McpClientError'; }
+}
 
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);
@@ -34,36 +44,82 @@ function matchesSchema(value: unknown, schema: Record<string, unknown> | undefin
 export class McpClient {
   readonly traces: Trace[] = [];
   private schema?: { tools: ToolDefinition[]; digest: string };
-  constructor(private readonly options: { transport: ToolTransport; toolMap: ReadonlyMap<SemanticOperation, ToolMapEntry>; schemaDigest?: string; sessionLock?: SessionLock }) {}
+  private readonly journal: OperationJournal;
+  private recoveryRequired = false;
+  constructor(private readonly options: {
+    transport: ToolTransport;
+    toolMap: ReadonlyMap<SemanticOperation, ToolMapEntry>;
+    schemaDigest?: string;
+    sessionLock?: Pick<SessionLock, 'runExclusive' | 'markUnknownMutation' | 'reconcile'> & Partial<Pick<SessionLock, 'journalPath'>>;
+    journal?: OperationJournal;
+    timeouts?: Partial<Record<string, number>>;
+  }) { this.journal = options.journal ?? new OperationJournal(options.sessionLock?.journalPath); }
   async runTransaction<T>(operationId: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return this.options.sessionLock ? this.options.sessionLock.runExclusive(operationId, fn, signal) : fn();
   }
-  async listSchemaDigest(): Promise<string> {
-    const listed = await this.options.transport.listTools();
+  async listSchemaDigest(signal?: AbortSignal): Promise<string> {
+    if (this.recoveryRequired) throw new McpClientError('RECOVERY_REQUIRED', 'the previous Photoshop operation has unknown completion; reconcile before another call', undefined, 'ambiguousState', false);
+    const listed = await runUncertainOperation({
+      operation: 'readLayers',
+      requestId: globalThis.crypto.randomUUID(),
+      mutation: false,
+      timeoutMs: this.options.timeouts?.readLayers ?? operationTimeoutMs('readLayers'),
+      journal: this.journal,
+      signal,
+      onUnknown: async () => {
+        this.recoveryRequired = true;
+        try { await this.options.sessionLock?.markUnknownMutation(); } catch { /* no owner: the local barrier still applies */ }
+      },
+      call: () => this.options.transport.listTools(),
+    });
     if (!Array.isArray(listed.tools) || listed.tools.some((tool) => typeof tool?.name !== 'string' || !tool.inputSchema)) throw new McpClientError('INVALID_TOOLS_LIST', 'tools/list response has invalid tool schemas');
     const digest = toolSchemaDigest(listed.tools);
     if (this.options.schemaDigest && digest !== this.options.schemaDigest) throw new McpClientError('SCHEMA_DIGEST_MISMATCH', 'tools/list schema digest differs from pinned digest', { expected: this.options.schemaDigest, actual: digest });
     this.schema = { tools: listed.tools, digest };
     return digest;
   }
-  async callMapped(operation: SemanticOperation, args: Record<string, unknown>): Promise<unknown> {
+  async callMapped(operation: SemanticOperation, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
     if (operation === 'scale' && args.percentX !== args.percentY) throw new McpClientError('FIT_MODE_UNSUPPORTED', 'independent-axis scale is not qualified');
     const entry = this.options.toolMap.get(operation);
     if (!entry || entry.status !== 'qualified') throw new McpClientError('CAPABILITY_MISSING', `no qualified MCP primitive for ${operation}`);
     const mapped = operation === 'scale' ? { percent: args.percentX } : args;
-    return this.callRaw(entry.toolName, mapped);
+    return this.callRaw(entry.toolName, mapped, signal);
   }
-  async callRaw(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+  async callRaw(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    return this.callRawWithSignal(toolName, args, signal);
+  }
+
+  async callRawWithSignal(toolName: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    if (this.recoveryRequired) throw new McpClientError('RECOVERY_REQUIRED', 'the previous Photoshop operation has unknown completion; reconcile before another call', undefined, 'ambiguousState', false);
     const entry = [...this.options.toolMap.values()].find((candidate) => candidate.toolName === toolName);
     if (!entry || entry.status !== 'qualified') throw new McpClientError('TOOL_NOT_ALLOWLISTED', `tool is not allowlisted: ${toolName}`);
-    await this.bindQualifiedEntry(entry);
+    await this.bindQualifiedEntry(entry, signal);
     const listed = this.schema!.tools.find((tool) => tool.name === toolName)!;
     if (!matchesSchema(args, listed.inputSchema)) throw new McpClientError('INVALID_TOOL_ARGUMENTS', `arguments do not match schema for ${toolName}`);
-    const trace: Trace = { requestId: globalThis.crypto.randomUUID(), toolName, arguments: redact(args), outcome: 'failed' };
+    const requestId = globalThis.crypto.randomUUID();
+    const trace: Trace = { requestId, toolName, arguments: redact(args), outcome: 'failed' };
     this.traces.push(trace);
     let response: unknown;
-    try { response = await this.options.transport.callTool({ name: toolName, arguments: args }); }
-    catch (error) { trace.errorCode = 'TRANSPORT_ERROR'; throw new McpClientError('TRANSPORT_ERROR', error instanceof Error ? error.message : 'transport failed'); }
+    try {
+      response = await runUncertainOperation({
+        operation: entry.operation,
+        requestId,
+        mutation: true,
+        timeoutMs: this.options.timeouts?.[entry.operation] ?? operationTimeoutMs(entry.operation),
+        journal: this.journal,
+        signal,
+        onUnknown: async () => {
+          this.recoveryRequired = true;
+          try { await this.options.sessionLock?.markUnknownMutation(); } catch { /* no owner: the local barrier still applies */ }
+        },
+        call: () => this.options.transport.callTool({ name: toolName, arguments: args }, signal),
+      });
+    } catch (error) {
+      trace.errorCode = error instanceof RecoveryError ? error.code : 'TRANSPORT_ERROR';
+      if (error instanceof RecoveryError && error.category === 'ambiguousState') trace.outcome = 'unknown';
+      if (error instanceof RecoveryError) throw new McpClientError(error.code, error.message, undefined, error.category, error.retryable, error.evidencePaths);
+      throw new McpClientError('TRANSPORT_ERROR', error instanceof Error ? error.message : 'transport failed', undefined, 'ambiguousState', false);
+    }
     if (typeof response !== 'object' || response === null) { trace.errorCode = 'INVALID_TOOL_RESPONSE'; throw new McpClientError('INVALID_TOOL_RESPONSE', 'tool response is not an object'); }
     const result = response as Record<string, unknown>;
     if (result.isError === true) { const message = Array.isArray(result.content) && typeof result.content[0] === 'object' && result.content[0] !== null && typeof (result.content[0] as Record<string, unknown>).text === 'string' ? (result.content[0] as Record<string, unknown>).text as string : 'tool returned an error'; trace.errorCode = 'TOOL_ERROR'; throw new McpClientError('TOOL_ERROR', message); }
@@ -74,8 +130,17 @@ export class McpClient {
     return value;
   }
 
-  private async bindQualifiedEntry(entry: ToolMapEntry): Promise<void> {
-    await this.listSchemaDigest();
+  /** Clears the local barrier only after the caller has independently proven idle state and ownership. */
+  async reconcile(requestId?: string): Promise<void> {
+    await this.journal.reconcile(requestId);
+    this.recoveryRequired = this.journal.pendingUnknown().length > 0;
+    if (!this.recoveryRequired) await this.options.sessionLock?.reconcile();
+  }
+
+  isRecoveryRequired(): boolean { return this.recoveryRequired; }
+
+  private async bindQualifiedEntry(entry: ToolMapEntry, signal?: AbortSignal): Promise<void> {
+    await this.listSchemaDigest(signal);
     const listed = this.schema!.tools.find((tool) => tool.name === entry.toolName);
     if (!listed || canonicalize(listed.inputSchema) !== canonicalize(entry.inputSchema) || canonicalize(listed.outputSchema ?? null) !== canonicalize(entry.outputSchema ?? null)) throw new McpClientError('SCHEMA_BINDING_MISMATCH', `qualified schema does not match tools/list for ${entry.toolName}`);
   }

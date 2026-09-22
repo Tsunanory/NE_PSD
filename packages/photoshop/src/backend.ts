@@ -19,7 +19,7 @@ import { qualify as qualifyTemplate, type QualificationAdapter, type Qualificati
 import type { SessionLock } from './session-lock.js';
 import type { FitMode, LayerSelector } from './types.js';
 
-export type BackendLock = Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation'>>;
+export type BackendLock = Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation' | 'runRecovery' | 'reconcile'>>;
 
 export type LifecycleAcknowledgement = { acknowledged: true; quiescent?: true; unchanged?: true; dependenciesUnchanged?: true };
 
@@ -110,6 +110,7 @@ function relativeEvidence(root: string, path: string): string {
 function isAmbiguous(cause: unknown): boolean {
   if (cause instanceof BackendError) return cause.category === 'ambiguousState' || cause.code.includes('TIMEOUT') || cause.code.includes('UNCERTAIN');
   const value = isRecord(cause) ? cause : {};
+  if (value.category === 'ambiguousState') return true;
   const code = typeof value.code === 'string' ? value.code : '';
   const message = cause instanceof Error ? cause.message : String(cause);
   return code === 'TIMEOUT' || code === 'TRANSPORT_AMBIGUOUS' || code === 'ACK_UNKNOWN' || /ambiguous|unknown|timeout|lost reply/i.test(message);
@@ -230,7 +231,7 @@ export class PhotoshopBackend {
 
   async recover(jobId: string, signal: AbortSignal): Promise<{ safe: boolean; evidencePaths: string[] }> {
     try {
-      return await this.adapter.lock.runExclusive(`recover-${jobId}`, async () => {
+      const recoverInsideLock = async () => {
         checkpoint(signal);
         if (!this.adapter.recover) return { safe: false, evidencePaths: [] };
         const result = await this.adapter.recover(jobId, signal);
@@ -245,7 +246,10 @@ export class PhotoshopBackend {
           evidencePaths.push(relativePath);
         }
         return { safe: result.safe, evidencePaths };
-      }, signal);
+      };
+      return await (this.adapter.lock.runRecovery
+        ? this.adapter.lock.runRecovery(recoverInsideLock, signal)
+        : this.adapter.lock.runExclusive(`recover-${jobId}`, recoverInsideLock, signal));
     } catch (cause) { throw errorFor(cause, 'RECOVERY_FAILED'); }
   }
 

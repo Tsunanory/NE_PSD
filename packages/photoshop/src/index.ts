@@ -6,6 +6,7 @@ export * from './session-lock.js';
 export * from './selectors.js';
 export * from './inspection.js';
 export * from './backend.js';
+export * from './recovery.js';
 
 export function parseRequest(input: unknown): RenderRequest {
   const request = RenderRequestSchema.parse(input);
