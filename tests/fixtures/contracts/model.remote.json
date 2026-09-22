@@ -1,0 +1,21 @@
+{
+  "profileId": "model-remote-1",
+  "provider": "luna",
+  "modelId": "gpt-5.6-luna",
+  "provenance": {
+    "kind": "remote",
+    "provider": "luna",
+    "modelId": "gpt-5.6-luna",
+    "revision": null,
+    "qualificationEvidencePath": "model/luna.json"
+  },
+  "endpoint": "codex://luna",
+  "quantization": null,
+  "contextTokens": 32768,
+  "maxOutputTokens": 4096,
+  "capabilities": {
+    "jsonSchema": true,
+    "vision": false,
+    "tools": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "profileId": "model-local-1",
+  "provider": "local-qwen",
+  "modelId": "Qwen3.8-27B-Q4",
+  "provenance": {
+    "kind": "local",
+    "artifactSha256": "8b297f09f2cefdabdb124d2ec78fc87bda23ff3402079b7650652d7115c3cf4b",
+    "runtimeVersion": "llama.cpp-1",
+    "chatTemplateSha256": "daae9a5a3e9cf75815acb8fc7e7e20bbc1ea733d0c8a408f16e52164a28e4533"
+  },
+  "endpoint": "http://127.0.0.1:8080",
+  "quantization": "Q4_K_M",
+  "contextTokens": 32768,
+  "maxOutputTokens": 4096,
+  "capabilities": {
+    "jsonSchema": true,
+    "vision": true,
+    "tools": false
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "inspectionId": "inspection-live-1",
+  "status": "proposed",
+  "targets": [
+    {
+      "targetCandidateId": "target-1",
+      "referenceCandidateId": "reference-1",
+      "inputCandidateId": null
+    }
+  ],
+  "variants": [
+    {
+      "id": "1",
+      "groupCandidateId": "variant-1"
+    },
+    {
+      "id": "2",
+      "groupCandidateId": "variant-2"
+    },
+    {
+      "id": "3",
+      "groupCandidateId": "variant-3"
+    }
+  ],
+  "fitMode": "cover",
+  "output": {
+    "format": "jpeg",
+    "quality": 90,
+    "colorSpace": "sRGB",
+    "width": 800,
+    "height": 600
+  },
+  "missingFields": [],
+  "facts": [
+    {
+      "claim": "The template contains three variant groups",
+      "evidenceRefs": [
+        "assets/inspection.json"
+      ]
+    }
+  ],
+  "explanation": "Use the inspected target and reference layers."
+}

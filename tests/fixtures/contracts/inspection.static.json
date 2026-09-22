@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "inspectionId": "inspection-static-1",
+  "evidenceStatus": "staticCandidate",
+  "template": {
+    "rootId": "fixture-root",
+    "relativePath": "assets/template.psd",
+    "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+  },
+  "capabilities": null,
+  "documents": [
+    {
+      "documentKey": "root",
+      "parentKey": null,
+      "viaLayer": null,
+      "sourceKind": "unknown",
+      "source": null,
+      "width": 1000,
+      "height": 800,
+      "colorMode": "RGB",
+      "bitDepth": 8
+    }
+  ],
+  "candidates": [
+    {
+      "candidateId": "target-1",
+      "documentKey": "root",
+      "selector": {
+        "documentRoute": [],
+        "layerPath": [
+          {
+            "name": "Target",
+            "kind": "smartObject",
+            "fingerprint": "target-fp"
+          }
+        ]
+      },
+      "bounds": {
+        "left": 10,
+        "top": 10,
+        "right": 400,
+        "bottom": 300
+      },
+      "visible": true,
+      "clipped": false,
+      "belowCandidateId": null,
+      "roleHints": [
+        "target"
+      ]
+    }
+  ],
+  "observedVariantStates": [],
+  "unresolvedLinks": [],
+  "evidencePaths": [
+    "assets/inspection.json"
+  ]
+}

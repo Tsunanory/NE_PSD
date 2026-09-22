@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job-1",
+  "assetId": "asset-1",
+  "attempt": 1,
+  "files": [
+    {
+      "relativePath": "assets/document-trace.json",
+      "sha256": "45d432b6347a3db367b416570ee5c84e55edf4834a8c8a9b592d7086063add41",
+      "bytes": 1,
+      "role": "trace"
+    },
+    {
+      "relativePath": "assets/geometry.json",
+      "sha256": "63b6a25b770e484800c956b3660891801b5b859f5aa8a07df04ed9f48ede6408",
+      "bytes": 1,
+      "role": "check"
+    }
+  ],
+  "visionInputs": []
+}

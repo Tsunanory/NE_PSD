@@ -12,13 +12,17 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "schema"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck"
   },
   "dependencies": {
+    "canonicalize": "2.1.0",
     "zod": "4.6.5"
   }
 }

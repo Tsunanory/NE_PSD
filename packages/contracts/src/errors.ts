@@ -1,0 +1,11 @@
+export { DomainErrorSchema } from './domain.js';
+export type { DomainError } from './domain.js';
+
+export const DOMAIN_ERROR_CODES = {
+  INVALID_INPUT: 'INVALID_INPUT',
+  UNKNOWN_CANDIDATE: 'UNKNOWN_CANDIDATE',
+  SOURCE_MISMATCH: 'SOURCE_MISMATCH',
+  POLICY_DIGEST_MISMATCH: 'POLICY_DIGEST_MISMATCH',
+  UNSAFE_PATH: 'UNSAFE_PATH',
+  MODEL_NOT_QUALIFIED: 'MODEL_NOT_QUALIFIED',
+} as const;

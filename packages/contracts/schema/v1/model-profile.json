@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "local-qwen",
+        "local-vision",
+        "codex",
+        "luna"
+      ]
+    },
+    "modelId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local"
+            },
+            "artifactSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "runtimeVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "chatTemplateSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "artifactSha256",
+            "runtimeVersion",
+            "chatTemplateSha256"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "remote"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "codex",
+                "luna"
+              ]
+            },
+            "modelId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "revision": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "qualificationEvidencePath": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "provider",
+            "modelId",
+            "revision",
+            "qualificationEvidencePath"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "endpoint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "quantization": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "contextTokens": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "maxOutputTokens": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "jsonSchema": {
+          "type": "boolean"
+        },
+        "vision": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "jsonSchema",
+        "vision",
+        "tools"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "profileId",
+    "provider",
+    "modelId",
+    "provenance",
+    "endpoint",
+    "quantization",
+    "contextTokens",
+    "maxOutputTokens",
+    "capabilities"
+  ],
+  "additionalProperties": false,
+  "$id": "@ne-psd/contracts/schema/v1/model-profile.json",
+  "x-schema-version": 1
+}

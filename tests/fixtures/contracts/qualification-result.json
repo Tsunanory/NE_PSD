@@ -1,0 +1,99 @@
+{
+  "status": "qualified",
+  "candidate": {
+    "schemaVersion": 1,
+    "profileId": "candidate-1",
+    "template": {
+      "rootId": "fixture-root",
+      "relativePath": "assets/template.psd",
+      "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+    },
+    "backendId": "alisaitteke",
+    "toolSchemaSha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+    "fitMode": "cover",
+    "output": {
+      "format": "jpeg",
+      "quality": 90,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600
+    },
+    "variants": [
+      {
+        "id": "1",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 1",
+              "kind": "group",
+              "fingerprint": "variant-1-fp"
+            }
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 2",
+              "kind": "group",
+              "fingerprint": "variant-2-fp"
+            }
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 3",
+              "kind": "group",
+              "fingerprint": "variant-3-fp"
+            }
+          ]
+        }
+      }
+    ],
+    "targets": [
+      {
+        "target": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Target",
+              "kind": "smartObject",
+              "fingerprint": "target-fp"
+            }
+          ]
+        },
+        "reference": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Reference",
+              "kind": "pixel",
+              "fingerprint": "reference-fp"
+            }
+          ]
+        },
+        "input": null
+      }
+    ]
+  },
+  "evidencePaths": [
+    "qualification.json"
+  ],
+  "errors": [],
+  "checks": [
+    {
+      "id": "sentinel",
+      "passed": true,
+      "evidencePath": "assets/inspection.json"
+    }
+  ]
+}

@@ -39,6 +39,7 @@ The table includes every registry dependency declared by root/workspace manifest
 | `@ne-psd/contracts` | 0.1.0 | private | `22.23.2` | any | `packages/contracts` | `n/a (workspace link)` |
 | `@modelcontextprotocol/sdk` | 1.30.0 | MIT | `>=18` | any | `https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.30.0.tgz` | `sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==` |
 | `@alisaitteke/photoshop-mcp` | 1.7.19 | MIT | `>=18.0.0` | any | `https://registry.npmjs.org/@alisaitteke/photoshop-mcp/-/photoshop-mcp-1.7.19.tgz` | `sha512-UEsZLBCuSh0TqVpKul6n2BVu3DW/G1gJ6oD8LwLAzBL7eaLTwtay3oSPDf/YHCL8ypvzXQlJEzwsaveCzEzXuA==` |
+| `canonicalize` | 2.1.0 | Apache-2.0 | not declared | any | `https://registry.npmjs.org/canonicalize/-/canonicalize-2.1.0.tgz` | `sha512-F705O3xrsUtgt98j7leetNhTWPe+5S72rlL5O4jA1pKqBVQ/dT1O1D6PFxmSXvc0SUOinWS57DKx0I3CHrXJHQ==` |
 
 ## Native and platform qualification
 

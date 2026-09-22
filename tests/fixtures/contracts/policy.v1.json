@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "policyId": "policy-1",
+  "policySha256": "f9793f3e4ee99ba98bf9548d5165042df58b02f2a40fbcfcefedfd6f0553f310",
+  "promptSha256": "daae9a5a3e9cf75815acb8fc7e7e20bbc1ea733d0c8a408f16e52164a28e4533",
+  "requirements": [
+    {
+      "id": "source",
+      "description": "source identity",
+      "mandatory": true,
+      "evaluator": "model"
+    }
+  ],
+  "visualGate": "qualifiedVisionReviewer"
+}

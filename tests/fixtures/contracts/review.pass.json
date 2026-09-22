@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "review-1",
+  "jobId": "job-1",
+  "assetId": "asset-1",
+  "attempt": 1,
+  "evidenceSha256": "c5728423bd5d2392e4485d5f129aba26985bde852d594e8f960abd32c7d25f40",
+  "sessionId": "session-1",
+  "promptSha256": "daae9a5a3e9cf75815acb8fc7e7e20bbc1ea733d0c8a408f16e52164a28e4533",
+  "modelId": "gpt-5.6-luna",
+  "modelProvenance": {
+    "kind": "remote",
+    "provider": "luna",
+    "modelId": "gpt-5.6-luna",
+    "revision": null,
+    "qualificationEvidencePath": "model/luna.json"
+  },
+  "reviewerVersion": "reviewer-1",
+  "reviewPolicySha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "verdict": "pass",
+  "variantChecks": [
+    {
+      "variantId": "1",
+      "verdict": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "variantId": "2",
+      "verdict": "pass",
+      "evidenceRefs": [
+        "assets/variant-2.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "variantId": "3",
+      "verdict": "pass",
+      "evidenceRefs": [
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    }
+  ],
+  "checks": [
+    {
+      "requirementId": "source",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg"
+      ],
+      "reason": "pass"
+    }
+  ],
+  "findings": []
+}

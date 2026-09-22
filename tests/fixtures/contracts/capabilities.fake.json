@@ -1,0 +1,16 @@
+{
+  "backendId": "alisaitteke",
+  "supportedFitModes": [
+    "cover",
+    "contain",
+    "stretch"
+  ],
+  "toolSchemaSha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+  "evidencePaths": [
+    "assets/capabilities.json"
+  ],
+  "version": "backend-1",
+  "sourceCommit": "fixture-commit",
+  "platform": "darwin",
+  "photoshopVersion": "fixture-photoshop"
+}

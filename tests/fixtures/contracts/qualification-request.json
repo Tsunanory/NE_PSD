@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 1,
+  "inspection": {
+    "schemaVersion": 1,
+    "inspectionId": "inspection-live-1",
+    "evidenceStatus": "liveObserved",
+    "template": {
+      "rootId": "fixture-root",
+      "relativePath": "assets/template.psd",
+      "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+    },
+    "capabilities": {
+      "backendId": "alisaitteke",
+      "supportedFitModes": [
+        "cover",
+        "contain",
+        "stretch"
+      ],
+      "toolSchemaSha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+      "evidencePaths": [
+        "assets/capabilities.json"
+      ],
+      "version": "backend-1",
+      "sourceCommit": "fixture-commit",
+      "platform": "darwin",
+      "photoshopVersion": "fixture-photoshop"
+    },
+    "documents": [
+      {
+        "documentKey": "root",
+        "parentKey": null,
+        "viaLayer": null,
+        "sourceKind": "root",
+        "source": {
+          "rootId": "fixture-root",
+          "relativePath": "assets/template.psd",
+          "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+        },
+        "width": 1000,
+        "height": 800,
+        "colorMode": "RGB",
+        "bitDepth": 8
+      }
+    ],
+    "candidates": [
+      {
+        "candidateId": "target-1",
+        "documentKey": "root",
+        "selector": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Target",
+              "kind": "smartObject",
+              "fingerprint": "target-fp"
+            }
+          ]
+        },
+        "bounds": {
+          "left": 10,
+          "top": 10,
+          "right": 400,
+          "bottom": 300
+        },
+        "visible": true,
+        "clipped": false,
+        "belowCandidateId": null,
+        "roleHints": [
+          "target"
+        ]
+      },
+      {
+        "candidateId": "reference-1",
+        "documentKey": "root",
+        "selector": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Reference",
+              "kind": "pixel",
+              "fingerprint": "reference-fp"
+            }
+          ]
+        },
+        "bounds": {
+          "left": 420,
+          "top": 10,
+          "right": 810,
+          "bottom": 300
+        },
+        "visible": true,
+        "clipped": false,
+        "belowCandidateId": null,
+        "roleHints": [
+          "reference"
+        ]
+      },
+      {
+        "candidateId": "variant-1",
+        "documentKey": "root",
+        "selector": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 1",
+              "kind": "group",
+              "fingerprint": "variant-1-fp"
+            }
+          ]
+        },
+        "bounds": null,
+        "visible": true,
+        "clipped": false,
+        "belowCandidateId": null,
+        "roleHints": [
+          "variant"
+        ]
+      },
+      {
+        "candidateId": "variant-2",
+        "documentKey": "root",
+        "selector": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 2",
+              "kind": "group",
+              "fingerprint": "variant-2-fp"
+            }
+          ]
+        },
+        "bounds": null,
+        "visible": false,
+        "clipped": false,
+        "belowCandidateId": null,
+        "roleHints": [
+          "variant"
+        ]
+      },
+      {
+        "candidateId": "variant-3",
+        "documentKey": "root",
+        "selector": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 3",
+              "kind": "group",
+              "fingerprint": "variant-3-fp"
+            }
+          ]
+        },
+        "bounds": null,
+        "visible": false,
+        "clipped": false,
+        "belowCandidateId": null,
+        "roleHints": [
+          "variant"
+        ]
+      }
+    ],
+    "observedVariantStates": [],
+    "unresolvedLinks": [],
+    "evidencePaths": [
+      "assets/inspection.json",
+      "assets/capabilities.json"
+    ]
+  },
+  "proposal": {
+    "schemaVersion": 1,
+    "inspectionId": "inspection-live-1",
+    "status": "proposed",
+    "targets": [
+      {
+        "targetCandidateId": "target-1",
+        "referenceCandidateId": "reference-1",
+        "inputCandidateId": null
+      }
+    ],
+    "variants": [
+      {
+        "id": "1",
+        "groupCandidateId": "variant-1"
+      },
+      {
+        "id": "2",
+        "groupCandidateId": "variant-2"
+      },
+      {
+        "id": "3",
+        "groupCandidateId": "variant-3"
+      }
+    ],
+    "fitMode": "cover",
+    "output": {
+      "format": "jpeg",
+      "quality": 90,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600
+    },
+    "missingFields": [],
+    "facts": [
+      {
+        "claim": "Three variants",
+        "evidenceRefs": [
+          "assets/inspection.json"
+        ]
+      }
+    ],
+    "explanation": "validated"
+  },
+  "workingTemplatePath": "/tmp/ne-psd-working/template.psd",
+  "evidenceDirectory": "/tmp/ne-psd-working/evidence"
+}

@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "assetStatus",
+        "review",
+        "error"
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "running",
+            "pausing",
+            "paused",
+            "completed",
+            "failed",
+            "blocked",
+            "cancelled"
+          ]
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "complete": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "assetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "rendering",
+                  "reviewing",
+                  "readyToCommit",
+                  "complete",
+                  "failed",
+                  "blocked",
+                  "cancelled"
+                ]
+              },
+              "attempt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "validation",
+                          "capability",
+                          "transient",
+                          "ambiguousState",
+                          "review",
+                          "cancelled"
+                        ]
+                      },
+                      "message": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "retryable": {
+                        "type": "boolean"
+                      },
+                      "evidencePaths": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "category",
+                      "message",
+                      "retryable",
+                      "evidencePaths"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "assetId",
+              "status",
+              "attempt",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "jobId",
+        "state",
+        "total",
+        "complete",
+        "failed",
+        "blocked",
+        "assets"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "sequence",
+    "timestamp",
+    "kind",
+    "snapshot"
+  ],
+  "additionalProperties": false,
+  "$id": "@ne-psd/contracts/schema/v1/job-event.json",
+  "x-schema-version": 1
+}

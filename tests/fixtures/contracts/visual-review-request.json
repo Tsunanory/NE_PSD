@@ -1,0 +1,47 @@
+{
+  "requestId": "visual-review-1",
+  "jobId": "job-1",
+  "assetId": "asset-1",
+  "attempt": 1,
+  "artifacts": [
+    {
+      "variantId": "1",
+      "path": "assets/variant-1.jpg",
+      "sha256": "f29bbedce114acaa26ecf56ddfdde459f2248c32d8044bf267d39001ac5b2583",
+      "bytes": 1,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600,
+      "format": "jpeg"
+    },
+    {
+      "variantId": "2",
+      "path": "assets/variant-2.jpg",
+      "sha256": "10e63b555ae8b7d2fdb5761d9fce763cece43f2808e1ab9dd70e719c9c8ee6c5",
+      "bytes": 1,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600,
+      "format": "jpeg"
+    },
+    {
+      "variantId": "3",
+      "path": "assets/variant-3.jpg",
+      "sha256": "41f1867eb9acf4bc0645e9209734b34690fbacb484f88878907809fb291b9d99",
+      "bytes": 1,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600,
+      "format": "jpeg"
+    }
+  ],
+  "preAttestationContentSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+  "profileSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "sourceSha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03",
+  "toolSchemaSha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+  "reviewPolicySha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "contactSheet": {
+    "relativePath": "assets/variant-1.jpg",
+    "sha256": "f29bbedce114acaa26ecf56ddfdde459f2248c32d8044bf267d39001ac5b2583"
+  }
+}

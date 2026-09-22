@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "policyId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policySha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "promptSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "requirements": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "evaluator": {
+            "type": "string",
+            "enum": [
+              "deterministic",
+              "model",
+              "human"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "mandatory",
+          "evaluator"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "visualGate": {
+      "type": "string",
+      "enum": [
+        "qualifiedVisionReviewer",
+        "humanPerAsset"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "policyId",
+    "policySha256",
+    "promptSha256",
+    "requirements",
+    "visualGate"
+  ],
+  "additionalProperties": false,
+  "$id": "@ne-psd/contracts/schema/v1/review-policy.json",
+  "x-schema-version": 1
+}
