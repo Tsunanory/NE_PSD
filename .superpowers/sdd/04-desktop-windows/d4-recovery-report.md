@@ -7,7 +7,7 @@ Branch: `build/desktop`
 
 - Starting HEAD: `7a5d77ed1494b327ab3c7a430ec2619c481f95d5`
 - Starting status: only `AGENTS.md`, `docs/superpowers/launch/04-desktop.txt`, and `docs/superpowers/plans/2026-09-21-ne-psd/04-desktop-windows.md` were modified.
-- Final implementation HEAD: recorded in the implementation commit below.
+- Final implementation HEAD: `6c32f4e764cdcc5916dba2187d27075f02968b48`.
 
 ## RED/GREEN
 
@@ -27,7 +27,7 @@ Added durable snapshot/event store with stale identity/sequence rejection, gap h
 
 ## Files and preservation
 
-Changed only D-owned `apps/desktop/`, `tests/desktop/`, `docs/desktop/`, and this report. The three pre-existing documentation modifications were preserved and excluded. Root manifests, lockfiles, contracts, config.toml and A/B/C paths were untouched.
+Changed only D-owned `apps/desktop/`, `tests/desktop/`, `docs/desktop/`, and this report. Implementation commit: `6c32f4e764cdcc5916dba2187d27075f02968b48`. The three pre-existing documentation modifications were preserved and excluded. Root manifests, lockfiles, contracts, config.toml and A/B/C paths were untouched.
 
 ## External gates
 
