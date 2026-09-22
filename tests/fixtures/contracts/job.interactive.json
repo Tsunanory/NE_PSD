@@ -95,14 +95,14 @@
       "source": {
         "rootId": "fixture-root",
         "relativePath": "assets/source.png",
-        "sha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03"
+        "sha256": "9492c7b36d5dec043f95de9a89f84f8c42e976aa4a296dd356c55c02513e0e95"
       },
-      "sourceBytes": 18
+      "sourceBytes": 1676
     }
   ],
   "outputRootId": "fixture-output",
   "modelProfileId": "model-local-1",
   "reviewerModelProfileId": "model-remote-1",
-  "reviewPolicySha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "reviewPolicySha256": "b11cbd19f25bf9fc47b23a025b6526a4676d52b2ef88f733792577fad0000cfc",
   "trigger": "interactive"
 }

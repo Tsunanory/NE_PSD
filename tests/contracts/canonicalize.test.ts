@@ -5,6 +5,8 @@ import {
   digestFile,
   validateManifestEntries,
   verifyManifestFiles,
+  bundleDigest,
+  digestWithoutSelfHash,
 } from '@ne-psd/contracts';
 import { mkdtemp, mkdir, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,6 +35,12 @@ describe('RFC 8785 canonicalization and evidence integrity', () => {
     ]).success).toBe(false);
     expect(validateManifestEntries([{ relativePath: '../escape', sha256: 'a'.repeat(64), bytes: 1, role: 'trace' }]).success).toBe(false);
     expect(validateManifestEntries([{ relativePath: 'a.txt', sha256: 'a'.repeat(64), bytes: 1, role: 'trace' }]).success).toBe(true);
+  });
+
+  it('computes stable bundle and self-excluded digests', () => {
+    const value = { b: 2, a: 1, evidenceSha256: 'old', manifestSha256: 'old' };
+    expect(bundleDigest(value)).toBe(bundleDigest({ ...value, evidenceSha256: 'new', manifestSha256: 'new' }));
+    expect(digestWithoutSelfHash({ payload: 'x', digest: 'old' }, 'digest')).toBe(digestWithoutSelfHash({ payload: 'x', digest: 'new' }, 'digest'));
   });
 
   it('detects changed trace bytes and symlink escape', async () => {

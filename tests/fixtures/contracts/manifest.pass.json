@@ -5,16 +5,52 @@
   "attempt": 1,
   "files": [
     {
+      "relativePath": "assets/capabilities.json",
+      "sha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+      "bytes": 27,
+      "role": "trace"
+    },
+    {
       "relativePath": "assets/document-trace.json",
       "sha256": "45d432b6347a3db367b416570ee5c84e55edf4834a8c8a9b592d7086063add41",
-      "bytes": 1,
+      "bytes": 29,
       "role": "trace"
     },
     {
       "relativePath": "assets/geometry.json",
       "sha256": "63b6a25b770e484800c956b3660891801b5b859f5aa8a07df04ed9f48ede6408",
-      "bytes": 1,
+      "bytes": 23,
       "role": "check"
+    },
+    {
+      "relativePath": "assets/inspection.json",
+      "sha256": "966ec958b115868fd36b702af78f0cfac778c87b5956357d1fbf99685e947f98",
+      "bytes": 25,
+      "role": "trace"
+    },
+    {
+      "relativePath": "assets/tool-trace.json",
+      "sha256": "f8fc6412d43c835e29dc8eeb0c9e2735eb14968510989b40b60df39ac55c1434",
+      "bytes": 25,
+      "role": "trace"
+    },
+    {
+      "relativePath": "assets/variant-1.jpg",
+      "sha256": "49b28772965a790261a02bc7b2e986ec596135414ce992b54254201ae8d3d559",
+      "bytes": 3120,
+      "role": "artifact"
+    },
+    {
+      "relativePath": "assets/variant-2.jpg",
+      "sha256": "2241d33c76c8b81150c0d0465a123cb46781d199f793bd1f5cf83d3da2a0c135",
+      "bytes": 3119,
+      "role": "artifact"
+    },
+    {
+      "relativePath": "assets/variant-3.jpg",
+      "sha256": "9c29cfa0ffd993c12b15736b726eb0ee6d9ea5faaf031a312a86a4793c4024af",
+      "bytes": 3119,
+      "role": "artifact"
     }
   ],
   "visionInputs": []

@@ -4,9 +4,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   EvidenceBundleManifestSchema,
+  RenderEvidenceSchema,
   JobSpecSchema,
   ReviewPolicySchema,
   RenderRequestSchema,
+  validateManifestCompleteness,
+  verifyManifestFiles,
   validateQualificationRequest,
   type JobEvent,
 } from '@ne-psd/contracts';
@@ -23,6 +26,14 @@ import {
 const abort = new AbortController().signal;
 
 describe('foundation fakes', () => {
+  it('parses every named contract fixture and verifies the pass bundle on disk', async () => {
+    const names = ['capabilities.fake.json', 'evidence.pass.json', 'inspection.live.json', 'inspection.static.json', 'job-event.blocked.json', 'job-event.running.json', 'job.interactive.json', 'manifest.pass.json', 'model.local.json', 'model.remote.json', 'policy.v1.json', 'profile.qualified.json', 'proposal.valid.json', 'qualification-request.json', 'qualification-result.json', 'render-request.valid.json', 'review.blocked.json', 'review.pass.json', 'visual-review-request.json'];
+    for (const name of names) expect(loadFixture(name)).toBeTruthy();
+    const evidence = RenderEvidenceSchema.parse(loadFixture('evidence.pass.json'));
+    const manifest = EvidenceBundleManifestSchema.parse(loadFixture('manifest.pass.json'));
+    expect(validateManifestCompleteness(manifest, [evidence.documentTracePath, evidence.toolTracePath, ...evidence.checks.map((check) => check.evidencePath), ...evidence.artifacts.map((artifact) => artifact.path)])).toEqual({ success: true });
+    expect((await verifyManifestFiles(resolve(process.cwd(), 'tests/fixtures/contracts'), manifest.files)).success).toBe(true);
+  });
   it('renders three real decodable, test-only artifacts with deterministic operations', async () => {
     const request = RenderRequestSchema.parse(loadFixture('render-request.valid.json'));
     const photoshop = new FakePhotoshop();
@@ -42,6 +53,7 @@ describe('foundation fakes', () => {
     }
     expect(evidence.artifacts.map((artifact) => artifact.path)).toEqual(bundle?.artifacts.map((artifact) => artifact.path));
     expect(photoshop.operations.map((operation) => operation.sequence)).toEqual([1]);
+    expect(evidence.checks.find((check) => check.id === 'SAFETY.ORIGINALS_UNCHANGED')?.passed).toBe(false);
   });
 
   it.each([
@@ -66,6 +78,17 @@ describe('foundation fakes', () => {
     const decision = await intelligence.review({ evidence, manifest, policy }, 'model-remote-1', abort);
     expect(decision.variantChecks.map((check) => check.variantId)).toEqual(['1', '2', '3']);
     expect(decision.checks.map((check) => check.requirementId)).toEqual([...RUNTIME_REQUIREMENT_IDS]);
+  });
+
+  it.each([
+    ['artifact omission', (manifest: Record<string, unknown>) => ({ ...manifest, files: (manifest.files as Array<Record<string, unknown>>).filter((file) => file.role !== 'artifact' || file.relativePath !== 'assets/variant-2.jpg') })],
+    ['attempt mismatch', (manifest: Record<string, unknown>) => ({ ...manifest, attempt: 2 })],
+  ] as const)('blocks intelligence pass on %s', async (_name, mutate) => {
+    const intelligence = new FakeIntelligence({ mode: 'pass' });
+    const evidence = loadFixture('evidence.pass.json');
+    const manifest = loadFixture<Record<string, unknown>>('manifest.pass.json');
+    const policy = ReviewPolicySchema.parse(loadFixture('policy.v1.json'));
+    await expect(intelligence.review({ evidence, manifest: mutate(manifest), policy }, 'model-remote-1', abort)).rejects.toMatchObject({ scenario: 'reviewContract' });
   });
 
   it('rejects invalid intelligence JSON instead of repairing it', async () => {

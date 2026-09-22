@@ -49,6 +49,7 @@ export interface JobService {
   cancel(jobId: string): Promise<void>;
   retryFailed(jobId: string): Promise<{ jobId: string }>;
   visualReview(jobId: string, assetId: string): Promise<VisualReviewRequest | null>;
+  submitVisualAttestation(requestId: string, decision: 'approve' | 'reject', notes: string): Promise<void>;
   snapshot(jobId: string): Promise<JobSnapshot>;
   subscribe(jobId: string, listener: (event: JobEvent) => void): () => void;
 }

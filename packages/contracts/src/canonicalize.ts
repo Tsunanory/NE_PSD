@@ -78,8 +78,12 @@ export function validateManifestCompleteness(manifest: { files: readonly Manifes
   return missing === undefined ? { success: true } : { success: false, error: new Error(`referenced file missing from manifest: ${missing}`) };
 }
 
-export function isSafeBundlePath(bundleRoot: string, candidatePath: string): boolean {
+/** Lexical-only check. Use verifyManifestFiles for security-sensitive filesystem validation. */
+export function isLexicallySafeBundlePath(bundleRoot: string, candidatePath: string): boolean {
   if (candidatePath.includes('\0') || isAbsolute(candidatePath) || /^[A-Za-z]:[\\/]/.test(candidatePath) || candidatePath.startsWith('\\\\')) return false;
   const resolved = relative(bundleRoot, join(bundleRoot, candidatePath));
   return resolved !== '..' && !resolved.startsWith(`..${sep}`) && !isAbsolute(resolved);
 }
+
+/** @deprecated Use isLexicallySafeBundlePath; this helper never verifies filesystem containment. */
+export const isSafeBundlePath = isLexicallySafeBundlePath;

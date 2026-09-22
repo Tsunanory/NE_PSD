@@ -4,7 +4,7 @@
   "jobId": "job-1",
   "assetId": "asset-1",
   "attempt": 1,
-  "evidenceSha256": "c5728423bd5d2392e4485d5f129aba26985bde852d594e8f960abd32c7d25f40",
+  "evidenceSha256": "44c7a27a99bed8d6be9425b96e707caf48bdecefa334fa039cb402253089f9f4",
   "sessionId": "session-1",
   "promptSha256": "daae9a5a3e9cf75815acb8fc7e7e20bbc1ea733d0c8a408f16e52164a28e4533",
   "modelId": "gpt-5.6-luna",
@@ -16,7 +16,7 @@
     "qualificationEvidencePath": "model/luna.json"
   },
   "reviewerVersion": "reviewer-1",
-  "reviewPolicySha256": "6666666666666666666666666666666666666666666666666666666666666666",
+  "reviewPolicySha256": "b11cbd19f25bf9fc47b23a025b6526a4676d52b2ef88f733792577fad0000cfc",
   "verdict": "pass",
   "variantChecks": [
     {
@@ -46,10 +46,152 @@
   ],
   "checks": [
     {
-      "requirementId": "source",
+      "requirementId": "BINDING.CURRENT_ATTEMPT",
       "result": "pass",
       "evidenceRefs": [
-        "assets/variant-1.jpg"
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "MANIFEST.COMPLETE",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "ARTIFACTS.EXACTLY_THREE",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "IMAGE.DECODE_FORMAT",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "IMAGE.DIMENSIONS_COLOR",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "GEOMETRY.REQUESTED_FIT",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "CLIPPING.ALPHA_ADJACENCY",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "VARIANTS.VISIBILITY",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "SMART_OBJECT.LINEAGE_PROPAGATION",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "SAFETY.LINKED_ISOLATION",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "SAFETY.ORIGINALS_UNCHANGED",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "SAFETY.DOCUMENT_OWNERSHIP",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "IMAGE.QUALITY",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "VISUAL.QUALIFIED",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
+      ],
+      "reason": "pass"
+    },
+    {
+      "requirementId": "EVIDENCE.TRACE_COMPLETE",
+      "result": "pass",
+      "evidenceRefs": [
+        "assets/variant-1.jpg",
+        "assets/variant-2.jpg",
+        "assets/variant-3.jpg"
       ],
       "reason": "pass"
     }

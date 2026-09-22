@@ -151,6 +151,28 @@ export class FakePhotoshop implements PhotoshopBackend {
       adjacentToReference: true,
     }));
     const basePath = testOnlyPath(`render/${request.jobId}/${request.asset.assetId}/attempt-${request.attempt}`);
+    const decoded = await Promise.all(artifacts.map(async (artifact) => {
+      const metadata = await sharp(artifact.data).metadata();
+      return metadata.width === width && metadata.height === height && metadata.format === format;
+    }));
+    const exactArtifacts = artifacts.length === 3 && artifacts.map((artifact) => artifact.variantId).join(',') === '1,2,3';
+    const ownedPaths = artifacts.every((artifact) => artifact.path.startsWith('testOnly/')) && basePath.startsWith('testOnly/');
+    const passed: Record<string, boolean> = {
+      'BINDING.CURRENT_ATTEMPT': request.attempt >= 1 && artifacts.every((artifact) => artifact.path.includes(`/attempt-${request.attempt}/`)),
+      'MANIFEST.COMPLETE': exactArtifacts && decoded.every(Boolean) && ownedPaths,
+      'ARTIFACTS.EXACTLY_THREE': exactArtifacts,
+      'IMAGE.DECODE_FORMAT': decoded.every(Boolean),
+      'IMAGE.DIMENSIONS_COLOR': decoded.every(Boolean) && artifacts.every((artifact) => artifact.colorSpace === 'sRGB'),
+      'GEOMETRY.REQUESTED_FIT': geometry.every((check) => check.fitMode === request.profile.fitMode && check.adjacentToReference),
+      'CLIPPING.ALPHA_ADJACENCY': geometry.every((check) => check.adjacentToReference),
+      'VARIANTS.VISIBILITY': true,
+      'SMART_OBJECT.LINEAGE_PROPAGATION': request.profile.targets.length > 0,
+      'SAFETY.LINKED_ISOLATION': ownedPaths,
+      'SAFETY.ORIGINALS_UNCHANGED': false,
+      'SAFETY.DOCUMENT_OWNERSHIP': ownedPaths,
+      'IMAGE.QUALITY': artifacts.every((artifact) => artifact.bytes > 0),
+      'EVIDENCE.TRACE_COMPLETE': true,
+    };
     const evidence: RenderEvidence = RenderEvidenceSchema.parse({
       schemaVersion: 1,
       jobId: request.jobId,
@@ -167,7 +189,7 @@ export class FakePhotoshop implements PhotoshopBackend {
         'IMAGE.DIMENSIONS_COLOR', 'GEOMETRY.REQUESTED_FIT', 'CLIPPING.ALPHA_ADJACENCY', 'VARIANTS.VISIBILITY',
         'SMART_OBJECT.LINEAGE_PROPAGATION', 'SAFETY.LINKED_ISOLATION', 'SAFETY.ORIGINALS_UNCHANGED',
         'SAFETY.DOCUMENT_OWNERSHIP', 'IMAGE.QUALITY', 'EVIDENCE.TRACE_COMPLETE',
-      ].map((id) => ({ id, passed: true, evidencePath: `${basePath}/checks/${id}.json` })),
+      ].map((id) => ({ id, passed: passed[id] ?? false, evidencePath: `${basePath}/checks/${id}.json` })),
       documentTracePath: `${basePath}/document-trace.json`,
       toolTracePath: `${basePath}/tool-trace.json`,
     });

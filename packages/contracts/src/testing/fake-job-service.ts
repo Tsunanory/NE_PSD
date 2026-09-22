@@ -31,6 +31,10 @@ export class FakeJobService implements JobService {
   private readonly specs = new Map<string, JobSpec>();
   private readonly eventsByJob = new Map<string, JobEvent[]>();
   private readonly listeners = new Map<string, Set<(event: JobEvent) => void>>();
+  private readonly requestById = new Map<string, VisualReviewRequest>();
+  private readonly currentRequestByAsset = new Map<string, string>();
+  private readonly attestations = new Map<string, { decision: 'approve' | 'reject'; notes: string }>();
+  private retryCount = 0;
   private nextSequence = 0;
 
   constructor(options: FakeJobServiceOptions = {}) {
@@ -75,12 +79,18 @@ export class FakeJobService implements JobService {
     const current = this.requireSnapshot(jobId);
     const spec = this.specs.get(jobId);
     if (spec === undefined) throw new Error(`unknown fake job: ${jobId}`);
-    this.update(jobId, {
+    const successorId = `${jobId}-retry-${++this.retryCount}`;
+    const successorSpec = { ...spec, jobId: successorId };
+    const successor = JobSnapshotSchema.parse({
       ...current,
+      jobId: successorId,
       state: 'running',
       assets: current.assets.map((asset) => asset.status === 'failed' || asset.status === 'blocked' ? { ...asset, status: 'queued', attempt: asset.attempt + 1, error: null } : asset),
     });
-    return { jobId: spec.jobId };
+    this.specs.set(successorId, successorSpec);
+    this.snapshots.set(successorId, successor);
+    this.emit(successorId, successor);
+    return { jobId: successorId };
   }
 
   async visualReview(jobId: string, assetId: string): Promise<VisualReviewRequest | null> {
@@ -89,6 +99,9 @@ export class FakeJobService implements JobService {
     if (spec === undefined) return null;
     const asset = spec.assets.find((candidate) => candidate.assetId === assetId);
     if (asset === undefined) return null;
+    const snapshot = this.requireSnapshot(jobId);
+    const currentAsset = snapshot.assets.find((candidate) => candidate.assetId === assetId);
+    if (currentAsset === undefined) return null;
     const artifacts = spec.profile.variants.map((variant) => ({
       variantId: variant.id,
       path: testOnlyPath(`review/${jobId}/${assetId}/variant-${variant.id}.jpg`),
@@ -103,7 +116,7 @@ export class FakeJobService implements JobService {
       requestId: testOnlyPath(`review/${jobId}/${assetId}/request`),
       jobId,
       assetId,
-      attempt: 1,
+      attempt: currentAsset.attempt,
       preAttestationContentSha256: sha256Text(`attestation:${jobId}:${assetId}`),
       profileSha256: spec.profile.profileSha256,
       sourceSha256: asset.source.sha256,
@@ -112,7 +125,24 @@ export class FakeJobService implements JobService {
       artifacts,
       contactSheet: { relativePath: testOnlyPath(`review/${jobId}/${assetId}/contact-sheet.jpg`), sha256: sha256Text(`contact:${jobId}:${assetId}`) },
     });
+    this.requestById.set(request.requestId, request);
+    this.currentRequestByAsset.set(assetId, request.requestId);
     return request;
+  }
+
+  async submitVisualAttestation(requestId: string, decision: 'approve' | 'reject', notes: string): Promise<void> {
+    const request = this.requestById.get(requestId);
+    if (request === undefined) throw new Error('unknown visual review request');
+    if (this.currentRequestByAsset.get(request.assetId) !== requestId) throw new Error('stale visual review request');
+    const existing = this.attestations.get(requestId);
+    if (existing !== undefined) {
+      if (existing.decision !== decision || existing.notes !== notes) throw new Error('conflicting visual attestation');
+      return;
+    }
+    const current = this.requireSnapshot(request.jobId);
+    const asset = current.assets.find((candidate) => candidate.assetId === request.assetId);
+    if (asset === undefined || asset.attempt !== request.attempt) throw new Error('visual review attempt mismatch');
+    this.attestations.set(requestId, { decision, notes });
   }
 
   async snapshot(jobId: string): Promise<JobSnapshot> {
@@ -147,7 +177,7 @@ export class FakeJobService implements JobService {
       complete: 0,
       failed: 0,
       blocked: 0,
-      assets: spec.assets.map((asset) => ({ assetId: asset.assetId, status: 'queued', attempt: 0, error: null })),
+      assets: spec.assets.map((asset) => ({ assetId: asset.assetId, status: 'queued', attempt: 1, error: null })),
     });
   }
 

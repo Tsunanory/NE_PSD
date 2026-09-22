@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { generatedSchema } from '../../scripts/generate-contract-schemas.mjs';
 import {
   ConfigurationProposalSchema,
   InspectionReportSchema,
@@ -62,5 +65,33 @@ describe('contract v1 schemas', () => {
     expect(ModelProfileSchema.safeParse(readFixture('model.local.json')).success).toBe(true);
     expect(ModelProfileSchema.safeParse(readFixture('model.remote.json')).success).toBe(true);
     expect(JobEventSchema.safeParse(readFixture('job-event.running.json')).success).toBe(true);
+  });
+
+  it('rejects relationship-invalid proposals and static qualification requests', () => {
+    const inspection = InspectionReportSchema.parse(readFixture('inspection.live.json'));
+    const proposal = ConfigurationProposalSchema.parse(readFixture('proposal.valid.json'));
+    const invalidRole = validateConfigurationProposal({ ...proposal, targets: [{ ...proposal.targets[0]!, targetCandidateId: 'reference-1' }] }, inspection);
+    expect(invalidRole.success).toBe(false);
+    const staticInspection = readFixture<Record<string, unknown>>('inspection.static.json');
+    const request = readFixture<Record<string, unknown>>('qualification-request.json');
+    const staticRequest = { ...request, inspection: staticInspection, proposal: { ...(request.proposal as Record<string, unknown>), inspectionId: staticInspection.inspectionId } };
+    expect(validateQualificationRequest(staticRequest).success).toBe(false);
+  });
+
+  it('keeps checked-in Draft 2020-12 schemas deterministic and annotated', () => {
+    const directory = resolve(process.cwd(), 'packages/contracts/schema/v1');
+    for (const file of readdirSync(directory).filter((name) => name.endsWith('.json')).sort()) {
+      const checkedIn = JSON.parse(readFileSync(resolve(directory, file), 'utf8'));
+      expect(checkedIn).toEqual(generatedSchema(file, checkedIn));
+      expect(checkedIn.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+      expect(checkedIn['x-runtime-only-invariants']).toBeInstanceOf(Array);
+    }
+    const template = JSON.parse(readFileSync(resolve(directory, 'template-profile.json'), 'utf8'));
+    expect(template.properties.variants.minItems).toBe(3);
+    expect(template.properties.variants.maxItems).toBe(3);
+    expect(template.properties.variants.prefixItems.map((item: { properties: { id: { enum: string[] } } }) => item.properties.id.enum)).toEqual([['1', '2', '3'], ['1', '2', '3'], ['1', '2', '3']]);
+    const manifest = JSON.parse(readFileSync(resolve(directory, 'evidence-bundle-manifest.json'), 'utf8'));
+    expect(manifest.properties.files.items.properties.bytes.minimum).toBe(1);
+    expect(manifest['x-runtime-only-invariants']).toContain('manifest relativePath uniqueness and self-hash exclusion');
   });
 });

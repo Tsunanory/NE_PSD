@@ -46,6 +46,8 @@ The registry in `requirements-v1.json` contains the exact 15 mandatory IDs. Ever
 
 Photoshop installation/controller qualification, Windows 11 x64 packaging and live execution, exact local Qwen3.8-27B artifact/runtime/vision qualification, critical npm audit remediation/security acceptance, and qualified human/vision review remain open. Fake tests prove adapter behavior only and do not qualify any of these gates. No scheduler or scheduled job was created.
 
+Final correction packet 2026-09-22: schema generation is deterministic and checked in with Draft 2020-12 metadata and explicit runtime-only cross-field invariants. Contract fixtures use deterministic Sharp-decodable PNG/JPEG assets; manifest closure is filesystem-verified. Fake Photoshop reports measured checks only; Fake Intelligence rejects manifest, digest, artifact, policy, and attempt mismatches. Contract suite: 5 files, 40 tests passed under Node v22.23.2/npm 10.9.8. `.npmrc` legacy-peer-deps rationale is recorded in dependency evidence. External Photoshop, Windows, Qwen, and security gates remain open.
+
 ## Integration
 
 Build the contracts package before consumers. Use `import { FakePhotoshop, FakeIntelligence, FakeJobService, FakeSetupService } from '@ne-psd/contracts/testing'` in fake-backed tests only. Keep fake paths out of live qualification records; live validators must receive real evidence paths and real source/backend/model digests. Task 4 should record the final Task 3 commit SHA, verify a clean tree, then create its four worktrees from that SHA.

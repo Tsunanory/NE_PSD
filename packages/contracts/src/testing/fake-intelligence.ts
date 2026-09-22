@@ -1,7 +1,10 @@
 import {
   ConfigurationProposalSchema,
+  EvidenceBundleManifestSchema,
   ModelProfileSchema,
   ReviewDecisionSchema,
+  RenderEvidenceSchema,
+  ReviewPolicySchema,
   type ConfigurationProposal,
   type DomainError,
   type EvidenceBundleManifest,
@@ -62,9 +65,13 @@ export class FakeIntelligence implements IntelligenceService {
   async review(input: { evidence: RenderEvidence; manifest: EvidenceBundleManifest; policy: ReviewPolicy }, modelProfileId: string, signal: AbortSignal): Promise<ReviewDecision> {
     this.throwIfAborted(signal);
     if (this.mode === 'invalidJson') return this.invalidJson();
+    const evidence = RenderEvidenceSchema.parse(input.evidence);
+    const manifest = EvidenceBundleManifestSchema.parse(input.manifest);
+    const policy = ReviewPolicySchema.parse(input.policy);
+    this.validateReviewInputs(evidence, manifest, policy);
     const verdict = this.mode === 'pass' ? 'pass' : this.mode;
     const variantVerdict = this.mode === 'pass' ? 'pass' : this.mode === 'revise' ? 'fail' : 'unknown';
-    const artifactRefs = input.evidence.artifacts.map((artifact) => testOnlyPath(artifact.path));
+    const artifactRefs = input.evidence.artifacts.map((artifact) => artifact.path);
     const checks = RUNTIME_REQUIREMENT_IDS.map((requirementId) => ({
       requirementId,
       result: this.mode === 'pass' ? 'pass' as const : this.mode === 'revise' && requirementId === 'IMAGE.QUALITY' ? 'fail' as const : 'unknown' as const,
@@ -129,6 +136,20 @@ export class FakeIntelligence implements IntelligenceService {
   private invalidJson<T>(): T {
     this.lastRawResponse = '{"verdict":"pass"';
     throw new FakeFailureError('invalidJson', 'fake intelligence returned invalid JSON');
+  }
+
+  private validateReviewInputs(evidence: RenderEvidence, manifest: EvidenceBundleManifest, policy: ReviewPolicy): void {
+    if (evidence.jobId !== manifest.jobId || evidence.assetId !== manifest.assetId || evidence.attempt !== manifest.attempt) throw new FakeFailureError('reviewContract', 'evidence and manifest binding mismatch');
+    if (policy.requirements.length !== RUNTIME_REQUIREMENT_IDS.length || policy.requirements.some((requirement, index) => requirement.id !== RUNTIME_REQUIREMENT_IDS[index] || !requirement.mandatory)) throw new FakeFailureError('reviewContract', 'review policy requirement registry mismatch');
+    if (evidence.artifacts.length !== 3 || evidence.artifacts.map((artifact) => artifact.variantId).join(',') !== '1,2,3') throw new FakeFailureError('reviewContract', 'review requires exactly three ordered artifacts');
+    const files = new Map(manifest.files.map((file) => [file.relativePath, file]));
+    for (const artifact of evidence.artifacts) {
+      const file = files.get(artifact.path);
+      if (file === undefined || file.role !== 'artifact' || file.sha256 !== artifact.sha256 || file.bytes !== artifact.bytes) throw new FakeFailureError('reviewContract', 'manifest does not close over artifacts');
+    }
+    for (const path of [evidence.documentTracePath, evidence.toolTracePath, ...evidence.checks.map((check) => check.evidencePath)]) {
+      if (!files.has(path)) throw new FakeFailureError('reviewContract', `manifest missing evidence ${path}`);
+    }
   }
 
   private error(code: string, category: DomainError['category'], message: string, retryable: boolean): DomainError {

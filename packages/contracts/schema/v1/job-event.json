@@ -178,5 +178,11 @@
   ],
   "additionalProperties": false,
   "$id": "@ne-psd/contracts/schema/v1/job-event.json",
-  "x-schema-version": 1
+  "x-schema-version": 1,
+  "x-runtime-only-invariants": [
+    "candidate existence, role and document-route compatibility",
+    "source/profile/backend/tool-schema/fit-mode and current-attempt binding",
+    "manifest path existence, digest and byte verification, including digestWithoutSelfHash",
+    "review policy digest, exact evidence closure and reviewer provenance qualification"
+  ]
 }

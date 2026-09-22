@@ -62,3 +62,5 @@ The Node 22 audit reported 13 vulnerable package nodes (12 high, 1 critical). Ad
 - Photoshop live qualification is unqualified.
 - Windows 11 x64 packaging and native acceptance are unqualified.
 - Exact local Qwen artifact and vision qualification are unqualified; no fallback is permitted.
+
+`.npmrc` retains `legacy-peer-deps=true` because the pinned Vitest peer-resolution defect prevents a clean exact-lockfile install without it.

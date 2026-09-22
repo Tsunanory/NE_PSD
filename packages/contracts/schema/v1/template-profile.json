@@ -19,7 +19,8 @@
         },
         "relativePath": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"
         },
         "sha256": {
           "type": "string",
@@ -332,12 +333,14 @@
         "width": {
           "type": "integer",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
+          "maximum": 9007199254740991,
+          "minimum": 1
         },
         "height": {
           "type": "integer",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
+          "maximum": 9007199254740991,
+          "minimum": 1
         }
       },
       "required": [
@@ -655,5 +658,11 @@
   ],
   "additionalProperties": false,
   "$id": "@ne-psd/contracts/schema/v1/template-profile.json",
-  "x-schema-version": 1
+  "x-schema-version": 1,
+  "x-runtime-only-invariants": [
+    "candidate existence, role and document-route compatibility",
+    "source/profile/backend/tool-schema/fit-mode and current-attempt binding",
+    "manifest path existence, digest and byte verification, including digestWithoutSelfHash",
+    "review policy digest, exact evidence closure and reviewer provenance qualification"
+  ]
 }

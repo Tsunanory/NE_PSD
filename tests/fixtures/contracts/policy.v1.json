@@ -4,21 +4,96 @@
   "policySha256": "b11cbd19f25bf9fc47b23a025b6526a4676d52b2ef88f733792577fad0000cfc",
   "promptSha256": "daae9a5a3e9cf75815acb8fc7e7e20bbc1ea733d0c8a408f16e52164a28e4533",
   "requirements": [
-    { "id": "BINDING.CURRENT_ATTEMPT", "description": "Current source, profile, tool-schema, job, asset, attempt and policy bindings agree everywhere.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "MANIFEST.COMPLETE", "description": "The immutable manifest closes over all required evidence files with verified digests and byte counts.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "ARTIFACTS.EXACTLY_THREE", "description": "Exactly variant IDs 1, 2 and 3 exist with no duplicate, missing or extra artifact.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "IMAGE.DECODE_FORMAT", "description": "Each artifact decodes completely and its actual media format matches the selected output format.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "IMAGE.DIMENSIONS_COLOR", "description": "Every artifact has the exact requested dimensions and qualified sRGB color evidence.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "GEOMETRY.REQUESTED_FIT", "description": "Measured post-place bounds satisfy the selected fit policy within qualified tolerance.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "CLIPPING.ALPHA_ADJACENCY", "description": "Reference alpha or mask clipping, layer relationship and adjacency are evidenced.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "VARIANTS.VISIBILITY", "description": "Each export shows only its selected qualified variant group.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "SMART_OBJECT.LINEAGE_PROPAGATION", "description": "The correct root-to-child lineage and propagation are proven.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "SAFETY.LINKED_ISOLATION", "description": "Mutable linked content is isolated according to the qualified profile.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "SAFETY.ORIGINALS_UNCHANGED", "description": "Source PSD, source image and original linked-file digests remain unchanged.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "SAFETY.DOCUMENT_OWNERSHIP", "description": "Mutations and cleanup occur only on job-owned documents.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "IMAGE.QUALITY", "description": "Template-calibrated deterministic image-quality checks pass.", "mandatory": true, "evaluator": "deterministic" },
-    { "id": "VISUAL.QUALIFIED", "description": "Every current artifact passes the selected qualified visual gate using actual image pixels.", "mandatory": true, "evaluator": "model" },
-    { "id": "EVIDENCE.TRACE_COMPLETE", "description": "Required evidence has known provenance with no gaps.", "mandatory": true, "evaluator": "deterministic" }
+    {
+      "id": "BINDING.CURRENT_ATTEMPT",
+      "description": "Current source, profile, tool-schema, job, asset, attempt and policy bindings agree everywhere.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "MANIFEST.COMPLETE",
+      "description": "The immutable manifest closes over all required evidence files with verified digests and byte counts.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "ARTIFACTS.EXACTLY_THREE",
+      "description": "Exactly variant IDs 1, 2 and 3 exist with no duplicate, missing or extra artifact.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "IMAGE.DECODE_FORMAT",
+      "description": "Each artifact decodes completely and its actual media format matches the selected output format.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "IMAGE.DIMENSIONS_COLOR",
+      "description": "Every artifact has the exact requested dimensions and qualified sRGB color evidence.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "GEOMETRY.REQUESTED_FIT",
+      "description": "Measured post-place bounds satisfy the selected cover, contain or stretch policy within qualified tolerance.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "CLIPPING.ALPHA_ADJACENCY",
+      "description": "Reference alpha or mask clipping, layer relationship and adjacency are evidenced.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "VARIANTS.VISIBILITY",
+      "description": "Each export shows only its selected qualified variant group.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "SMART_OBJECT.LINEAGE_PROPAGATION",
+      "description": "The correct root-to-child lineage and shared propagation or independent replacement are proven.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "SAFETY.LINKED_ISOLATION",
+      "description": "Mutable linked content is isolated, relinked or embedded according to the qualified profile.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "SAFETY.ORIGINALS_UNCHANGED",
+      "description": "The source PSD, source image and original linked-file digests remain unchanged.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "SAFETY.DOCUMENT_OWNERSHIP",
+      "description": "The trace shows mutations and cleanup only on job-owned documents with a known final state.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "IMAGE.QUALITY",
+      "description": "Template-calibrated blankness, coverage, alpha and deterministic comparison checks pass.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    },
+    {
+      "id": "VISUAL.QUALIFIED",
+      "description": "Every current artifact passes the selected qualified visual gate using actual image pixels.",
+      "mandatory": true,
+      "evaluator": "model"
+    },
+    {
+      "id": "EVIDENCE.TRACE_COMPLETE",
+      "description": "Required tool, document, deterministic-check and review evidence has known provenance with no gaps.",
+      "mandatory": true,
+      "evaluator": "deterministic"
+    }
   ],
   "visualGate": "qualifiedVisionReviewer"
 }
