@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedNavigation, isAllowedRootHandle } from '../../apps/desktop/src/main/window.js';
+import { isAllowedNavigation, isAllowedRootHandle, packagedRendererUrl } from '../../apps/desktop/src/main/window.js';
 
 describe('desktop window policy', () => {
   it('allows only the packaged app origin', () => {
-    expect(isAllowedNavigation('file:///app/index.html', 'production')).toBe(true);
+    expect(isAllowedNavigation(packagedRendererUrl(), 'production')).toBe(true);
     expect(isAllowedNavigation('https://evil.example/', 'production')).toBe(false);
     expect(isAllowedNavigation('http://localhost:5173/', 'production')).toBe(false);
   });
