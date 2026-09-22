@@ -6,6 +6,7 @@ Branch: `build/desktop`
 ## Checkout
 
 - Starting HEAD: `f563ed2886fbf0d4aa8a8f9dca62bc2eafd0b096`
+- Final implementation HEAD: `d1ec37b5ecc39660500e114a455e89ce3e3ef13b`.
 - Starting status: only `AGENTS.md`, `docs/superpowers/launch/04-desktop.txt`, and `docs/superpowers/plans/2026-09-21-ne-psd/04-desktop-windows.md` were modified.
 - Host evidence: `/System/Volumes/Data` reported 100% capacity with approximately 975 MiB free during execution. No user/project data was deleted and no vendor artifacts were downloaded.
 
@@ -30,7 +31,7 @@ Added strict blocked runtime manifest/schema using only exact values available i
 
 ## Files and preservation
 
-Changed only D-owned `apps/desktop/`, `packaging/`, `tests/desktop/`, `docs/desktop/`, and this report. The three pre-existing documentation modifications were preserved and excluded. Root manifests, lockfiles, contracts, config.toml and A/B/C paths were untouched.
+Changed only D-owned `apps/desktop/`, `packaging/`, `tests/desktop/`, `docs/desktop/`, and this report. Implementation commit: `d1ec37b5ecc39660500e114a455e89ce3e3ef13b`. The three pre-existing documentation modifications were preserved and excluded. Root manifests, lockfiles, contracts, config.toml and A/B/C paths were untouched.
 
 ## External gates
 
