@@ -23,7 +23,7 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-db-')), 'state.sqlite');
     const first = new JobRepository(db);
     createQualified(first, spec());
-    first.transition('asset-1', 'rendering');
+    first.transition('job-1', 'asset-1', 'rendering');
     const event = first.appendEvent('job-1', 'assetStatus');
     expect(event.sequence).toBe(1);
     expect(first.snapshot('job-1').assets[0]!.status).toBe('rendering');
@@ -39,7 +39,7 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-records-')), 'state.sqlite');
     const repository = new JobRepository(db);
     createQualified(repository, spec('records'));
-    repository.transition('asset-1', 'rendering');
+    repository.transition('records', 'asset-1', 'rendering');
     expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
     repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
     repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'tx-1', path: '/tmp/published' });
@@ -53,7 +53,7 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-attempt-integrity-')), 'state.sqlite');
     const first = new JobRepository(db);
     createQualified(first, spec('attempt-integrity'));
-    first.transition('asset-1', 'rendering');
+    first.transition('attempt-integrity', 'asset-1', 'rendering');
     expect(() => first.recordReview({ reviewId: 'review-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
     expect(() => first.recordPublication({ publicationId: 'publication-missing-attempt', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 2, transactionKey: 'tx-missing-attempt', path: '/tmp/other' })).toThrow();
     first.close();
@@ -107,10 +107,10 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-control-')), 'state.sqlite');
     const repository = new JobRepository(db);
     createQualified(repository, spec('control'));
-    repository.transition('asset-1', 'rendering');
+    repository.transition('control', 'asset-1', 'rendering');
     repository.pause('control');
     expect(repository.controlState('control')).toBe('pause');
-    repository.transition('asset-1', 'reviewing');
+    repository.transition('control', 'asset-1', 'reviewing');
     expect(repository.snapshot('control').assets[0]!.status).toBe('reviewing');
     repository.acknowledgePause('control');
     expect(repository.snapshot('control').state).toBe('paused');
@@ -127,8 +127,8 @@ describe('durable repository', () => {
     const job = spec('precedence');
     job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
     createQualified(repository, job);
-    repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
-    repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'blocked', { code: 'BLOCKED', category: 'review', message: 'blocked', retryable: false, evidencePaths: [] });
+    repository.transition('precedence', 'asset-1', 'rendering'); repository.transition('precedence', 'asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('precedence', 'asset-2', 'rendering'); repository.transition('precedence', 'asset-2', 'blocked', { code: 'BLOCKED', category: 'review', message: 'blocked', retryable: false, evidencePaths: [] });
     expect(repository.snapshot('precedence').state).toBe('blocked');
     repository.close();
   });
@@ -137,13 +137,13 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-attempt-ceiling-')), 'state.sqlite');
     const repository = new JobRepository(db);
     createQualified(repository, spec('attempt-ceiling'));
-    repository.transition('asset-1', 'rendering');
-    repository.transition('asset-1', 'failed', { code: 'FAILED-1', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
-    repository.transition('asset-1', 'queued');
-    repository.transition('asset-1', 'rendering');
-    repository.transition('asset-1', 'failed', { code: 'FAILED-2', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
-    repository.transition('asset-1', 'queued');
-    expect(() => repository.transition('asset-1', 'rendering')).toThrowError(/attempt limit/i);
+    repository.transition('attempt-ceiling', 'asset-1', 'rendering');
+    repository.transition('attempt-ceiling', 'asset-1', 'failed', { code: 'FAILED-1', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('attempt-ceiling', 'asset-1', 'queued');
+    repository.transition('attempt-ceiling', 'asset-1', 'rendering');
+    repository.transition('attempt-ceiling', 'asset-1', 'failed', { code: 'FAILED-2', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('attempt-ceiling', 'asset-1', 'queued');
+    expect(() => repository.transition('attempt-ceiling', 'asset-1', 'rendering')).toThrowError(/attempt limit/i);
     expect(repository.attempts('attempt-ceiling', 'asset-1')).toHaveLength(2);
     repository.close();
   });
@@ -154,8 +154,8 @@ describe('durable repository', () => {
     const job = spec('mixed-terminal');
     job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
     createQualified(repository, job);
-    repository.transition('asset-1', 'rendering'); repository.transition('asset-1', 'reviewing'); repository.transition('asset-1', 'readyToCommit'); repository.transition('asset-1', 'complete');
-    repository.transition('asset-2', 'rendering'); repository.transition('asset-2', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('mixed-terminal', 'asset-1', 'rendering'); repository.transition('mixed-terminal', 'asset-1', 'reviewing'); repository.transition('mixed-terminal', 'asset-1', 'readyToCommit'); repository.transition('mixed-terminal', 'asset-1', 'complete');
+    repository.transition('mixed-terminal', 'asset-2', 'rendering'); repository.transition('mixed-terminal', 'asset-2', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
     expect(repository.snapshot('mixed-terminal').state).toBe('failed');
     repository.close();
   });
@@ -173,8 +173,8 @@ describe('durable repository', () => {
     const job = spec('retry-selection');
     job.assets = [job.assets[0]!, { ...job.assets[0]!, assetId: 'asset-2', source: { ...job.assets[0]!.source, relativePath: 'b.png' } }];
     createQualified(repository, job);
-    repository.transition('asset-1', 'rendering');
-    repository.transition('asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('retry-selection', 'asset-1', 'rendering');
+    repository.transition('retry-selection', 'asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
     expect(() => repository.retryFailed('retry-selection', ['asset-1', 'asset-1'])).toThrow();
     expect(() => repository.retryFailed('retry-selection', ['asset-2'])).toThrow();
     expect(() => repository.retryFailed('retry-selection', [])).toThrow();
@@ -185,8 +185,8 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-retry-reopen-')), 'state.sqlite');
     const repository = new JobRepository(db);
     createQualified(repository, spec('retry-parent'));
-    repository.transition('asset-1', 'rendering');
-    repository.transition('asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    repository.transition('retry-parent', 'asset-1', 'rendering');
+    repository.transition('retry-parent', 'asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
     const before = repository.snapshot('retry-parent');
     const successor = repository.retryFailed('retry-parent', ['asset-1']);
     expect(successor.jobId).not.toBe('retry-parent');
@@ -199,6 +199,30 @@ describe('durable repository', () => {
     expect(reopened.snapshot('retry-parent')).toEqual(before);
     expect(reopened.snapshot(successor.jobId).assets[0]).toMatchObject({ assetId: 'asset-1', status: 'queued', attempt: 0 });
     expect(reopened.db.prepare('SELECT parent_job_id FROM jobs WHERE job_id=?').get(successor.jobId)).toEqual({ parent_job_id: 'retry-parent' });
+    reopened.close();
+  });
+
+  it('transitions a retried asset by successor job identity', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-retry-identity-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    createQualified(repository, spec('000-parent'));
+    repository.transition('000-parent', 'asset-1', 'rendering');
+    repository.transition('000-parent', 'asset-1', 'failed', { code: 'FAILED', category: 'transient', message: 'failed', retryable: true, evidencePaths: [] });
+    const successor = repository.retryFailed('000-parent', ['asset-1']);
+    const predecessorBefore = repository.snapshot('000-parent');
+    const predecessorAttemptsBefore = repository.attempts('000-parent', 'asset-1');
+    repository.transition(successor.jobId, 'asset-1', 'rendering');
+    expect(repository.snapshot(successor.jobId).assets[0]).toMatchObject({ status: 'rendering', attempt: 1 });
+    expect(repository.attempts(successor.jobId, 'asset-1')[0]).toMatchObject({ job_id: successor.jobId, transaction_key: `${successor.jobId}:asset-1:1` });
+    expect(repository.snapshot('000-parent')).toEqual(predecessorBefore);
+    expect(repository.attempts('000-parent', 'asset-1')).toEqual(predecessorAttemptsBefore);
+    repository.close();
+
+    const reopened = new JobRepository(db);
+    expect(reopened.snapshot('000-parent')).toEqual(predecessorBefore);
+    expect(reopened.snapshot(successor.jobId).assets[0]).toMatchObject({ status: 'rendering', attempt: 1 });
+    expect(reopened.attempts(successor.jobId, 'asset-1')[0]).toMatchObject({ transaction_key: `${successor.jobId}:asset-1:1` });
+    expect(reopened.attempts(successor.jobId, 'asset-1')[0]).not.toMatchObject({ transaction_key: '000-parent:asset-1:1' });
     reopened.close();
   });
 });

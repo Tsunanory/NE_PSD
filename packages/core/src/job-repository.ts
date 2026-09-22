@@ -55,18 +55,18 @@ export class JobRepository {
     })();
   }
 
-  private row(assetId: string): AssetRow {
-    const row = this.db.prepare('SELECT job_id,asset_id,status,attempt,error_json FROM assets WHERE asset_id=? ORDER BY job_id LIMIT 1').get(assetId) as AssetRow | undefined;
-    if (!row) throw new Error(`unknown asset: ${assetId}`);
+  private row(jobId: string, assetId: string): AssetRow {
+    const row = this.db.prepare('SELECT job_id,asset_id,status,attempt,error_json FROM assets WHERE job_id=? AND asset_id=?').get(jobId, assetId) as AssetRow | undefined;
+    if (!row) throw new Error(`unknown asset: ${jobId}/${assetId}`);
     return row;
   }
   private jobControl(jobId: string): string | null {
     return (this.db.prepare('SELECT requested_control FROM jobs WHERE job_id=?').get(jobId) as { requested_control: string | null } | undefined)?.requested_control ?? null;
   }
 
-  transition(assetId: string, to: AssetStatus, error?: DomainError): void {
+  transition(jobId: string, assetId: string, to: AssetStatus, error?: DomainError): void {
     this.db.transaction(() => {
-      const current = this.row(assetId);
+      const current = this.row(jobId, assetId);
       assertAssetTransition(current.status, to);
       if (this.jobControl(current.job_id) === 'cancel' && !['complete', 'failed', 'blocked', 'cancelled'].includes(to)) throw Object.assign(new Error('cancel requested; await safe-boundary acknowledgement'), { code: 'CONTROL_REQUESTED' });
       const attempt = to === 'rendering' ? current.attempt + 1 : current.attempt;
