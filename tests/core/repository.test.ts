@@ -50,7 +50,9 @@ describe('durable repository', () => {
     createQualified(repository, spec('records'));
     repository.transition('records', 'asset-1', 'rendering');
     expect(repository.attempts('records', 'asset-1')).toHaveLength(1);
+    repository.transition('records', 'asset-1', 'reviewing');
     repository.recordReview({ reviewId: 'review-1', jobId: 'records', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    repository.transition('records', 'asset-1', 'readyToCommit');
     repository.recordPublication({ publicationId: 'publication-1', jobId: 'records', assetId: 'asset-1', attempt: 1, transactionKey: 'records:asset-1:1', path: '/tmp/ne-psd-out/published' });
     const extra = spec('extra').profile; extra.profileId = 'profile-2'; extra.qualificationId = 'qualification-1'; extra.profileSha256 = sha256Json(extra, { excludeKeys: ['profileSha256'] });
     repository.recordQualification({ qualificationId: 'qualification-1', profileId: 'profile-2', profileSha256: extra.profileSha256, evidence: { path: 'evidence' }, profile: extra });
@@ -71,7 +73,9 @@ describe('durable repository', () => {
     const reopened = new JobRepository(db);
     expect(() => reopened.recordReview({ reviewId: 'review-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, payload: { verdict: 'blocked' } })).toThrow();
     expect(() => reopened.recordPublication({ publicationId: 'publication-wrong-asset', jobId: 'attempt-integrity', assetId: 'missing-asset', attempt: 1, transactionKey: 'attempt-integrity:missing-asset:1', path: '/tmp/ne-psd-out/other' })).toThrow();
+    reopened.transition('attempt-integrity', 'asset-1', 'reviewing');
     reopened.recordReview({ reviewId: 'review-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    reopened.transition('attempt-integrity', 'asset-1', 'readyToCommit');
     reopened.recordPublication({ publicationId: 'publication-valid', jobId: 'attempt-integrity', assetId: 'asset-1', attempt: 1, transactionKey: 'attempt-integrity:asset-1:1', path: '/tmp/ne-psd-out/published' });
     reopened.close();
 
@@ -90,6 +94,16 @@ describe('durable repository', () => {
     repository.transition('stale-attempt', 'asset-1', 'rendering');
     expect(() => repository.recordReview({ reviewId: 'stale-review', jobId: 'stale-attempt', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } })).toThrowError(/current attempt/i);
     expect(() => repository.recordPublication({ publicationId: 'stale-publication', jobId: 'stale-attempt', assetId: 'asset-1', attempt: 1, transactionKey: 'stale-attempt:asset-1:1', path: '/tmp/ne-psd-out/stale' })).toThrowError(/current attempt/i);
+    repository.close();
+  });
+
+  it('rejects review and publication records outside their lifecycle phases', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-lifecycle-boundary-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    createQualified(repository, spec('lifecycle-boundary'));
+    repository.transition('lifecycle-boundary', 'asset-1', 'rendering');
+    expect(() => repository.recordReview({ reviewId: 'early-review', jobId: 'lifecycle-boundary', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } })).toThrowError(/reviewing phase/i);
+    expect(() => repository.recordPublication({ publicationId: 'early-publication', jobId: 'lifecycle-boundary', assetId: 'asset-1', attempt: 1, transactionKey: 'lifecycle-boundary:asset-1:1', path: '/tmp/ne-psd-out/early' })).toThrowError(/readyToCommit phase/i);
     repository.close();
   });
 
@@ -117,7 +131,9 @@ describe('durable repository', () => {
     expect(reopened.snapshot('legacy').assets[0]!.status).toBe('rendering');
     expect(() => reopened.recordReview({ reviewId: 'legacy-invalid-review', jobId: 'legacy', assetId: 'asset-1', attempt: 2, payload: { verdict: 'blocked' } })).toThrow();
     expect(() => reopened.recordPublication({ publicationId: 'legacy-invalid-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 2, transactionKey: 'legacy-invalid-tx', path: '/tmp/other' })).toThrow();
+    reopened.transition('legacy', 'asset-1', 'reviewing');
     reopened.recordReview({ reviewId: 'legacy-review', jobId: 'legacy', assetId: 'asset-1', attempt: 1, payload: { verdict: 'blocked' } });
+    reopened.transition('legacy', 'asset-1', 'readyToCommit');
     expect(() => reopened.recordPublication({ publicationId: 'legacy-publication', jobId: 'legacy', assetId: 'asset-1', attempt: 1, transactionKey: 'legacy:asset-1:1', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding/i);
     reopened.close();
 
@@ -295,6 +311,8 @@ describe('durable repository', () => {
     expect(() => repository.createJob(value)).toThrowError(/output-root binding/i);
     repository.createJob(value, null, rootBinding());
     repository.transition('root-bound', 'asset-1', 'rendering');
+    repository.transition('root-bound', 'asset-1', 'reviewing');
+    repository.transition('root-bound', 'asset-1', 'readyToCommit');
     expect(() => repository.recordPublication({ publicationId: 'traversal', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/../escape' })).toThrow(/output root|binding/i);
     mkdirSync('/tmp/ne-psd-untrusted', { recursive: true });
     try { unlinkSync('/tmp/ne-psd-out/link'); } catch {}

@@ -90,6 +90,11 @@ export class JobRepository {
     if (!row) throw new Error(`unknown asset: ${jobId}/${assetId}`);
     if (row.attempt !== attempt) throw Object.assign(new Error('record does not match the current attempt'), { code: 'CURRENT_ATTEMPT_MISMATCH' });
   }
+  private assertAttemptState(jobId: string, assetId: string, attempt: number, expected: AssetStatus, phase: string): void {
+    this.assertCurrentAttempt(jobId, assetId, attempt);
+    const row = this.db.prepare('SELECT status FROM assets WHERE job_id=? AND asset_id=?').get(jobId, assetId) as { status: AssetStatus } | undefined;
+    if (row?.status !== expected) throw Object.assign(new Error(`record requires ${phase} phase`), { code: 'INVALID_LIFECYCLE_PHASE' });
+  }
 
   transition(jobId: string, assetId: string, to: AssetStatus, error?: DomainError): void {
     this.db.transaction(() => {
@@ -144,15 +149,17 @@ export class JobRepository {
     } catch { throw new Error('persisted event JSON is malformed or invalid'); }
   }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
-  recordReview(record: ReviewRecord): void { this.assertCurrentAttempt(record.jobId, record.assetId, record.attempt); this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); }
+  recordReview(record: ReviewRecord): void { this.db.transaction(() => { this.assertAttemptState(record.jobId, record.assetId, record.attempt, 'reviewing', 'reviewing'); this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); })(); }
   recordPublication(record: PublicationRecord): void {
-    this.assertCurrentAttempt(record.jobId, record.assetId, record.attempt);
-    const job = this.db.prepare('SELECT output_root_path AS root,output_root_identity AS identity FROM jobs WHERE job_id=?').get(record.jobId) as { root: string | null; identity: string | null } | undefined;
-    const expected = `${record.jobId}:${record.assetId}:${record.attempt}`;
-    let confined = false;
-    try { const root = realpathSync(job?.root ?? ''); const candidate = realpathWithExistingAncestor(record.path); const rel = relative(root, candidate); confined = rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); } catch { confined = false; }
-    if (!job?.root || !job.identity || filesystemIdentity(job.root) !== job.identity || record.transactionKey !== expected || !confined) throw Object.assign(new Error('publication is outside trusted output root or has invalid transaction identity'), { code: 'PUBLICATION_BINDING_MISMATCH' });
-    this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, expected, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString());
+    this.db.transaction(() => {
+      this.assertAttemptState(record.jobId, record.assetId, record.attempt, 'readyToCommit', 'readyToCommit');
+      const job = this.db.prepare('SELECT output_root_path AS root,output_root_identity AS identity FROM jobs WHERE job_id=?').get(record.jobId) as { root: string | null; identity: string | null } | undefined;
+      const expected = `${record.jobId}:${record.assetId}:${record.attempt}`;
+      let confined = false;
+      try { const root = realpathSync(job?.root ?? ''); const candidate = realpathWithExistingAncestor(record.path); const rel = relative(root, candidate); confined = rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); } catch { confined = false; }
+      if (!job?.root || !job.identity || filesystemIdentity(job.root) !== job.identity || record.transactionKey !== expected || !confined) throw Object.assign(new Error('publication is outside trusted output root or has invalid transaction identity'), { code: 'PUBLICATION_BINDING_MISMATCH' });
+      this.db.prepare('INSERT INTO publications(publication_id,job_id,asset_id,attempt,transaction_key,path,manifest_json,created_at) VALUES(?,?,?,?,?,?,?,?)').run(record.publicationId, record.jobId, record.assetId, record.attempt, expected, record.path, record.manifest === undefined ? null : JSON.stringify(record.manifest), new Date().toISOString());
+    })();
   }
   recordQualification(record: QualificationRecord): void {
     const profile = TemplateProfileSchema.safeParse(record.profile);
