@@ -54,4 +54,10 @@ Verification:
 
 Limitations: live Photoshop acknowledgement, idle/status primitive, process-death reconciliation, and Windows qualification remain untested. Recovery never replays a mutation or re-exports an ambiguous filename; operator reconciliation or a new attempt is required after an unresolved barrier. Source/master/dependency preservation remains enforced by B12's transaction boundary and is not weakened by B13.
 
+## B13 correction retry
+
+The correction adds unresolved-transport tracking through timeout and late-reply settlement, dynamic operation-specific journal binding after lock acquisition, crash-durable hash-chained journal validation, explicit stale-owner adoption, persisted identity/ownership/path/depth checks, and typed timeout-safe recovery. Backend recovery now clears and releases only after safe proof; failed or ambiguous recovery marks and retains the barrier. Unknown journal-terminal write failures fail closed. The observer checkpoint is recorded in `skill-observations/checkpoints.log`.
+
+Correction commit: `7e46802` (`fix(photoshop): close B13 recovery race conditions`). Correction verification: focused recovery/session/backend/MCP tests: 46 passed; workspace checks passed. Full Photoshop suite: 156 passed, 1 inherited B04 selector failure at `tests/photoshop/selectors.test.ts:89`; `git diff --check` passed. Live Photoshop, Windows, and process-death qualification remain untested.
+
 B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.

@@ -34,7 +34,7 @@ describe('Photoshop installation session lock', () => {
     const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
     const lockPath = join(root, 'photoshop.lock');
     const installationPath = normalize(resolve('/Applications/Adobe Photoshop 2026/Adobe Photoshop 2026.app'));
-    const metadata = JSON.stringify({ schemaVersion: 1, hostId: 'host-a', installationPath, installationDigest: 'a'.repeat(64), pid: 12345, processStartIdentity: 'child-start', operationId: 'child-job', ownershipToken: 'child-token', journalPath: 'child-journal', heartbeatAt: 1000, inFlight: 0, unknownMutation: false, reconciledJobOwnedDocuments: true });
+ const metadata = JSON.stringify({ schemaVersion: 1, hostId: 'host-a', installationPath, installationDigest: 'a'.repeat(64), pid: 12345, processStartIdentity: 'child-start', operationId: 'child-job', ownershipToken: 'child-token', journalPath: 'child-journal', heartbeatAt: 1000, inFlight: 0, unsettledOperations: 0, unknownMutation: false, reconciledJobOwnedDocuments: true });
     const script = `const fs=require('node:fs/promises'); (async()=>{await fs.mkdir(process.argv[1]); await fs.writeFile(process.argv[1]+'/owner.json', process.argv[2]); console.log('ready'); setInterval(()=>{},1000)})()`;
     const child = spawn(process.execPath, ['-e', script, lockPath, metadata], { stdio: ['ignore', 'pipe', 'inherit'] });
     await once(child.stdout!, 'data');
@@ -68,7 +68,7 @@ describe('Photoshop installation session lock', () => {
     const contender = new SessionLock(options(lockPath));
     await writeFile(join(lockPath, 'owner.json'), '{bad');
     await expect(contender.tryAcquire()).resolves.toEqual({ acquired: false, reason: 'RECOVERY_REQUIRED' });
-    const valid = { schemaVersion: 1, hostId: 'host-a', pid: 101, processStartIdentity: 'start-a', operationId: 'x', ownershipToken: 'x', journalPath: 'j', installationPath: options(lockPath).installationPath, installationDigest: 'a'.repeat(64), heartbeatAt: 1, inFlight: 0, unknownMutation: false, reconciledJobOwnedDocuments: true };
+ const valid = { schemaVersion: 1, hostId: 'host-a', pid: 101, processStartIdentity: 'start-a', operationId: 'x', ownershipToken: 'x', journalPath: 'j', installationPath: options(lockPath).installationPath, installationDigest: 'a'.repeat(64), heartbeatAt: 1, inFlight: 0, unsettledOperations: 0, unknownMutation: false, reconciledJobOwnedDocuments: true };
     await writeFile(join(lockPath, 'owner.json'), JSON.stringify({ ...valid, hostId: 'other' }));
     await expect(contender.tryAcquire()).resolves.toEqual({ acquired: false, reason: 'RECOVERY_REQUIRED' });
     await writeFile(join(lockPath, 'owner.json'), JSON.stringify({ ...valid, processStartIdentity: 'different' }));
@@ -100,6 +100,33 @@ describe('Photoshop installation session lock', () => {
     await expect(owner.release()).resolves.toEqual({ released: false, reason: 'RECOVERY_REQUIRED' });
     await rm(root, { recursive: true, force: true });
   });
+
+ it('adopts a stale owner only with persisted operation identity and token', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
+    const lockPath = join(root, 'photoshop.lock');
+    const owner = new SessionLock(options(lockPath, { isProcessAlive: () => false }));
+    await owner.acquire({ jobId: 'job-stale', journalPath: join(lockPath, 'journal', 'job-stale.jsonl') });
+    await owner.markUnknownMutation();
+    const metadata = JSON.parse(await readFile(join(lockPath, 'owner.json'), 'utf8')) as Record<string, unknown>;
+    const restarted = new SessionLock(options(lockPath, { pid: 202, processStartIdentity: 'restarted', isProcessAlive: () => false }));
+    await expect(restarted.tryAcquire({ jobId: 'ordinary' })).resolves.toEqual({ acquired: false, reason: 'RECOVERY_REQUIRED' });
+    await expect(restarted.adoptRecovery({ operationId: 'wrong', ownershipToken: String(metadata.ownershipToken), previousPid: 101, previousProcessStartIdentity: 'start-a' })).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
+    await expect(restarted.adoptRecovery({ operationId: 'job-stale', ownershipToken: String(metadata.ownershipToken), previousPid: 101, previousProcessStartIdentity: 'start-a' })).resolves.toMatchObject({ adopted: true });
+    await restarted.reconcile();
+    await rm(root, { recursive: true, force: true });
+ });
+
+ it('retains the lock until tracked transport promises settle', async () => {
+ const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
+ const lock = new SessionLock(options(join(root, 'photoshop.lock')));
+ await lock.acquire({ jobId: 'job-pending' });
+ await lock.markTransportPending();
+ await lock.markUnknownMutation();
+ await expect(lock.reconcile()).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
+ await lock.markTransportSettled();
+ await lock.reconcile();
+ await rm(root, { recursive: true, force: true });
+ });
 
   it('keeps a timed-out mutation barrier from overlapping a later operation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));

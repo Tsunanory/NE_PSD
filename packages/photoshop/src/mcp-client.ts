@@ -50,25 +50,40 @@ export class McpClient {
     transport: ToolTransport;
     toolMap: ReadonlyMap<SemanticOperation, ToolMapEntry>;
     schemaDigest?: string;
-    sessionLock?: Pick<SessionLock, 'runExclusive' | 'markUnknownMutation' | 'reconcile'> & Partial<Pick<SessionLock, 'journalPath'>>;
+    sessionLock?: Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation' | 'reconcile' | 'markTransportPending' | 'markTransportSettled' | 'journalPath' | 'journalIdentity' | 'journalMetadata'>>;
     journal?: OperationJournal;
     timeouts?: Partial<Record<string, number>>;
-  }) { this.journal = options.journal ?? new OperationJournal(options.sessionLock?.journalPath); }
+  }) { this.journal = options.journal ?? new OperationJournal(); }
+  private readonly journals = new Map<string, OperationJournal>();
+  private journalForCall(): OperationJournal {
+    if (this.options.journal) return this.options.journal;
+    const identity = this.options.sessionLock?.journalIdentity;
+    const path = this.options.sessionLock?.journalPath;
+    if (!identity || !path) return this.journal;
+    const existing = this.journals.get(path);
+    if (existing) return existing;
+    const created = new OperationJournal(path, identity);
+    this.journals.set(path, created);
+    return created;
+  }
   async runTransaction<T>(operationId: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return this.options.sessionLock ? this.options.sessionLock.runExclusive(operationId, fn, signal) : fn();
   }
   async listSchemaDigest(signal?: AbortSignal): Promise<string> {
     if (this.recoveryRequired) throw new McpClientError('RECOVERY_REQUIRED', 'the previous Photoshop operation has unknown completion; reconcile before another call', undefined, 'ambiguousState', false);
+    const journal = this.journalForCall();
     const listed = await runUncertainOperation({
       operation: 'readLayers',
       requestId: globalThis.crypto.randomUUID(),
       mutation: false,
       timeoutMs: this.options.timeouts?.readLayers ?? operationTimeoutMs('readLayers'),
-      journal: this.journal,
+      journal,
       signal,
+      onDispatch: async () => { try { await this.options.sessionLock?.markTransportPending?.(); } catch { /* calls outside an acquired transaction retain the local journal barrier */ } },
+      onSettled: async () => { try { await this.options.sessionLock?.markTransportSettled?.(); } catch { /* owner may already have exited; local tracking remains authoritative */ } },
       onUnknown: async () => {
         this.recoveryRequired = true;
-        try { await this.options.sessionLock?.markUnknownMutation(); } catch { /* no owner: the local barrier still applies */ }
+        try { await this.options.sessionLock?.markUnknownMutation?.(); } catch { /* no owner: the local barrier still applies */ }
       },
       call: () => this.options.transport.listTools(),
     });
@@ -99,6 +114,7 @@ export class McpClient {
     const requestId = globalThis.crypto.randomUUID();
     const trace: Trace = { requestId, toolName, arguments: redact(args), outcome: 'failed' };
     this.traces.push(trace);
+    const journal = this.journalForCall();
     let response: unknown;
     try {
       response = await runUncertainOperation({
@@ -106,11 +122,13 @@ export class McpClient {
         requestId,
         mutation: true,
         timeoutMs: this.options.timeouts?.[entry.operation] ?? operationTimeoutMs(entry.operation),
-        journal: this.journal,
+        journal,
         signal,
+        onDispatch: async () => { try { await this.options.sessionLock?.markTransportPending?.(); } catch { /* calls outside an acquired transaction retain the local journal barrier */ } },
+        onSettled: async () => { try { await this.options.sessionLock?.markTransportSettled?.(); } catch { /* owner may already have exited; local tracking remains authoritative */ } },
         onUnknown: async () => {
           this.recoveryRequired = true;
-          try { await this.options.sessionLock?.markUnknownMutation(); } catch { /* no owner: the local barrier still applies */ }
+          try { await this.options.sessionLock?.markUnknownMutation?.(); } catch { /* no owner: the local barrier still applies */ }
         },
         call: () => this.options.transport.callTool({ name: toolName, arguments: args }, signal),
       });
@@ -132,9 +150,12 @@ export class McpClient {
 
   /** Clears the local barrier only after the caller has independently proven idle state and ownership. */
   async reconcile(requestId?: string): Promise<void> {
-    await this.journal.reconcile(requestId);
-    this.recoveryRequired = this.journal.pendingUnknown().length > 0;
-    if (!this.recoveryRequired) await this.options.sessionLock?.reconcile();
+    const journal = this.journalForCall();
+    if (journal.unsettled().length > 0 || (this.options.sessionLock?.journalMetadata?.unsettledOperations ?? 0) > 0) throw new McpClientError('UNSETTLED_OPERATION', 'cannot reconcile while an underlying transport promise is unresolved', undefined, 'ambiguousState', false);
+    await journal.reconcile(requestId);
+    try { await this.options.sessionLock?.reconcile?.(); }
+    catch (error) { this.recoveryRequired = true; throw error; }
+    this.recoveryRequired = journal.pendingUnknown().length > 0 || journal.unsettled().length > 0;
   }
 
   isRecoveryRequired(): boolean { return this.recoveryRequired; }

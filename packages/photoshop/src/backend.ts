@@ -233,8 +233,17 @@ export class PhotoshopBackend {
     try {
       const recoverInsideLock = async () => {
         checkpoint(signal);
-        if (!this.adapter.recover) return { safe: false, evidencePaths: [] };
-        const result = await this.adapter.recover(jobId, signal);
+        const retainRecoveryBarrier = async (): Promise<void> => {
+          if (!this.adapter.lock.markUnknownMutation) throw new BackendError('RECOVERY_BARRIER_UNAVAILABLE', 'failed or ambiguous recovery cannot prove installation lock retention', 'ambiguousState', [], false);
+          await this.adapter.lock.markUnknownMutation();
+        };
+        if (!this.adapter.recover) { await retainRecoveryBarrier(); return { safe: false, evidencePaths: [] }; }
+        let result: { safe: boolean; evidencePaths: string[] };
+        try { result = await this.adapter.recover(jobId, signal); }
+        catch (cause) {
+          await retainRecoveryBarrier();
+          throw cause;
+        }
         if (!result || typeof result.safe !== 'boolean' || !Array.isArray(result.evidencePaths)) throw new BackendError('RECOVERY_RESULT_INVALID', 'recovery returned an invalid result');
         const root = typeof this.adapter.recoveryRoot === 'function' ? await this.adapter.recoveryRoot(jobId) : this.adapter.recoveryRoot;
         if (!root && result.evidencePaths.some((path) => isAbsolute(path))) throw new BackendError('RECOVERY_PATH_INVALID', 'absolute recovery evidence requires a trusted recovery root');
@@ -245,7 +254,16 @@ export class PhotoshopBackend {
           if (canonicalRoot) await safeBundlePath(canonicalRoot, relativePath);
           evidencePaths.push(relativePath);
         }
-        return { safe: result.safe, evidencePaths };
+        if (!result.safe) {
+          await retainRecoveryBarrier();
+          return { safe: false, evidencePaths };
+        }
+        if (!this.adapter.lock.reconcile) {
+          await retainRecoveryBarrier();
+          throw new BackendError('RECOVERY_RECONCILIATION_UNAVAILABLE', 'safe recovery cannot release the installation lock without explicit reconciliation', 'ambiguousState', [], false);
+        }
+        await this.adapter.lock.reconcile();
+        return { safe: true, evidencePaths };
       };
       return await (this.adapter.lock.runRecovery
         ? this.adapter.lock.runRecovery(recoverInsideLock, signal)
