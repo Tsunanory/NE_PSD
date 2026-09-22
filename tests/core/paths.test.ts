@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, writeFile, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, chmod, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assertConfinedPath, validateOutputRoot, validateOutputPathBudget, validateWindowsComponent } from '@ne-psd/core';
@@ -24,5 +24,14 @@ describe('Windows-safe confined paths', () => {
 
   it('enforces the final Windows-safe output path budget', () => {
     expect(() => validateOutputPathBudget('/tmp/output', 'asset--abc', '1.png', 20)).toThrowError(/length/i);
+  });
+
+  it('rejects an output-root symlink that resolves inside the input tree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-output-link-'));
+    const input = join(root, 'input');
+    await mkdir(input);
+    const output = join(root, 'output');
+    await symlink(input, output);
+    await expect(validateOutputRoot(input, output)).rejects.toMatchObject({ code: 'OUTPUT_INSIDE_INPUT' });
   });
 });

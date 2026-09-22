@@ -37,6 +37,16 @@ export function validateOutputPathBudget(outputRoot: string, assetDirectory: str
   return candidate;
 }
 
+async function realpathWithExistingAncestor(path: string): Promise<string> {
+  try { return await realpath(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const parent = resolve(path, '..');
+    if (parent === path) throw error;
+    const resolvedParent = await realpathWithExistingAncestor(parent);
+    return resolve(resolvedParent, path.slice(parent.length + 1));
+  }
+}
+
 export async function assertExistingConfinedPath(root: string, candidate: string): Promise<string> {
   const rel = assertConfinedPath(root, candidate);
   const rootReal = await realpath(root);
@@ -52,6 +62,10 @@ export async function validateOutputRoot(inputRoot: string, outputRoot: string):
   const rel = relative(input, output);
   if (rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))) throw new PathSafetyError('OUTPUT_INSIDE_INPUT', 'output root must not be inside input root');
   await mkdir(output, { recursive: true });
+  const inputReal = await realpathWithExistingAncestor(input);
+  const outputReal = await realpathWithExistingAncestor(output);
+  const realRel = relative(inputReal, outputReal);
+  if (realRel === '' || (!realRel.startsWith(`..${sep}`) && realRel !== '..' && !isAbsolute(realRel))) throw new PathSafetyError('OUTPUT_INSIDE_INPUT', 'output root must not resolve inside input root');
   const info = await stat(output);
   if (!info.isDirectory()) throw new PathSafetyError('OUTPUT_NOT_DIRECTORY', 'output root is not a directory');
   if ((info.mode & 0o222) === 0) throw new PathSafetyError('OUTPUT_NOT_WRITABLE', 'output root is read-only');
