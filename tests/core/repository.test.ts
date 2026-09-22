@@ -5,16 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { JobRepository } from '@ne-psd/core';
+import { sha256Json } from '@ne-psd/contracts';
 import type { JobSpec } from '@ne-psd/contracts';
 
 const hash = 'a'.repeat(64);
 const selector = { documentRoute: [], layerPath: [{ name: 'target', kind: 'smartObject' as const, fingerprint: 'f' }] };
-const spec = (jobId = 'job-1'): JobSpec => ({
+const spec = (jobId = 'job-1'): JobSpec => {
+ const value: JobSpec = ({
   schemaVersion: 1, jobId, outputRootId: 'out', modelProfileId: 'brain', reviewerModelProfileId: 'reviewer', reviewPolicySha256: hash,
   trigger: 'interactive', maxAttempts: 2,
   profile: { schemaVersion: 1, profileId: 'profile', template: { rootId: 'templates', relativePath: 'template.psd', sha256: hash }, profileSha256: hash, qualificationId: 'qualification', backendId: 'alisaitteke', toolSchemaSha256: hash, targets: [{ target: selector, reference: selector, input: null }], fitMode: 'cover', output: { format: 'png', quality: 90, colorSpace: 'sRGB', width: 10, height: 10 }, variants: [{ id: '1', group: selector }, { id: '2', group: { ...selector, layerPath: [{ ...selector.layerPath[0]!, name: 'v2' }] } }, { id: '3', group: { ...selector, layerPath: [{ ...selector.layerPath[0]!, name: 'v3' }] } }] },
   assets: [{ assetId: 'asset-1', source: { rootId: 'input', relativePath: 'a.png', sha256: hash }, sourceBytes: 1 }],
-});
+ });
+ value.profile.profileSha256 = sha256Json(value.profile, { excludeKeys: ['profileSha256'] });
+ return value;
+};
 
 describe('durable repository', () => {
   const createQualified = (repository: JobRepository, value: JobSpec) => { repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'test' } }); repository.createJob(value); };
@@ -164,6 +169,16 @@ describe('durable repository', () => {
     const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-unqualified-')), 'state.sqlite');
     const repository = new JobRepository(db);
     expect(() => repository.createJob(spec('unqualified'))).toThrowError(/qualification/i);
+    repository.close();
+  });
+
+  it('rejects a tampered profile even when qualification strings match', async () => {
+    const db = join(await mkdtemp(join(tmpdir(), 'ne-psd-profile-binding-')), 'state.sqlite');
+    const repository = new JobRepository(db);
+    const value = spec('tampered-profile');
+    value.profile.template.relativePath = 'tampered.psd';
+    repository.recordQualification({ qualificationId: value.profile.qualificationId, profileId: value.profile.profileId, profileSha256: value.profile.profileSha256, evidence: { source: 'caller' } });
+    expect(() => repository.createJob(value)).toThrowError(/profile digest/i);
     repository.close();
   });
 

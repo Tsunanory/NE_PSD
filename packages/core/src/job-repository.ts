@@ -44,6 +44,7 @@ export class JobRepository {
   }
 
   createJob(spec: JobSpec, parentJobId: string | null = null): void {
+    if (spec.profile.profileSha256 !== sha256Json(spec.profile, { excludeKeys: ['profileSha256'] })) throw Object.assign(new Error('template profile digest mismatch'), { code: 'PROFILE_DIGEST_MISMATCH' });
     const qualification = this.db.prepare('SELECT profile_id,profile_sha256 FROM qualifications WHERE qualification_id=?').get(spec.profile.qualificationId) as { profile_id: string; profile_sha256: string } | undefined;
     if (!qualification) throw Object.assign(new Error('template qualification record is required'), { code: 'QUALIFICATION_REQUIRED' });
     if (qualification.profile_id !== spec.profile.profileId || qualification.profile_sha256 !== spec.profile.profileSha256) throw Object.assign(new Error('template qualification does not match profile'), { code: 'QUALIFICATION_MISMATCH' });
