@@ -14,6 +14,32 @@ export type DocumentState = {
   sourceKind: 'root' | 'embedded' | 'linked' | 'unknown';
 };
 
+/** Lifecycle observations are adapter-normalized; Photoshop IDs are runtime-only. */
+export type DocumentContentType = 'psd' | 'psb' | 'unknown';
+export type DocumentTraceState = 'issued' | 'acknowledged' | 'failedSafe' | 'unknown';
+export type DocumentTraceRecord = {
+  sequence: number;
+  type: 'operation' | 'ownership-proof' | 'state-transition';
+  operation?: Extract<OperationKind, 'openDocument' | 'openContents' | 'saveChild' | 'closeDiscard'>;
+  documentId?: DocumentId;
+  parentId?: DocumentId | null;
+  route?: string | null;
+  state?: DocumentTraceState | string;
+  transition?: string;
+  owned?: boolean;
+  ownershipKey?: string;
+  reason?: string;
+  beforeDocumentIds?: string[];
+  afterDocumentIds?: string[];
+  activeDocumentId?: string | null;
+  expectedPath?: string | null;
+  expectedParentId?: string | null;
+  expectedRoute?: string | null;
+  provisional?: boolean;
+  authorization?: 'allowed' | 'denied' | 'not-checked';
+  timestamp: string;
+};
+
 export type LayerState = {
   id: LayerId;
   parentId: LayerId | null;
