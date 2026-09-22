@@ -28,6 +28,12 @@ Verification before handoff:
 
 Limitations: live Photoshop adapter wiring, Windows qualification, and source/dependency hash implementation remain adapter/integration gates. JPEG rendering requires the qualified session to provide an explicit background policy. No live Photoshop or Windows evidence is claimed.
 
+## B12 correction retry
+
+The B12 correction adds runtime validation for typed `acknowledged` lifecycle proofs, requires unchanged master/dependency proofs and quiescent discard proofs, preserves the recovery barrier for ambiguous mutations, normalizes thrown failures with `code`, `category`, `retryable`, and `evidencePaths`, and makes staging evidence writes canonical/symlink-safe. Recovery evidence is resolved against the adapter's trusted `recoveryRoot`; it never uses `process.cwd()`.
+
+Required fake coverage now includes malformed lifecycle acknowledgements, unsealed profiles, ambiguous mutation preservation without discard, existing trace retention, source/dependency bytes, referenced evidence files, and strict two-asset discard ordering. The inherited B04 selector failure remains unchanged.
+
 ## B05 known blocker
 
 B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.

@@ -1,4 +1,4 @@
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   CapabilityReportSchema,
@@ -20,6 +20,8 @@ import type { SessionLock } from './session-lock.js';
 import type { FitMode, LayerSelector } from './types.js';
 
 export type BackendLock = Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation'>>;
+
+export type LifecycleAcknowledgement = { acknowledged: true; quiescent?: true; unchanged?: true; dependenciesUnchanged?: true };
 
 export type RenderResource = {
   resourceId: string;
@@ -43,16 +45,16 @@ export type RenderSession = {
   bundleRoot?: string;
   workingTemplatePath: string;
   resources: readonly RenderResource[];
-  openRoot: () => Promise<unknown>;
-  verifyGraph: (request: RenderRequest) => Promise<unknown>;
+  openRoot: () => Promise<LifecycleAcknowledgement>;
+  verifyGraph: (request: RenderRequest) => Promise<LifecycleAcknowledgement>;
   renderResource: (resource: RenderResource, input: RenderRequest['asset'], fitMode: FitMode, signal: AbortSignal) => Promise<RenderPlacement>;
-  verifyPropagation: (resources: readonly RenderResource[], signal: AbortSignal) => Promise<unknown>;
+  verifyPropagation: (resources: readonly RenderResource[], signal: AbortSignal) => Promise<LifecycleAcknowledgement>;
   exporter: ExportAdapter;
   jpegBackground?: Rgb;
   renderingIntent?: 'relative-colorimetric' | 'perceptual' | 'absolute-colorimetric' | 'saturation';
   qualityEvidence?: QualityEvidence;
-  verifyOriginals: () => Promise<boolean>;
-  discard: () => Promise<unknown>;
+  verifyOriginals: () => Promise<LifecycleAcknowledgement & { unchanged: true; dependenciesUnchanged: true }>;
+  discard: () => Promise<LifecycleAcknowledgement & { quiescent: true }>;
   documentTracePath?: string;
   toolTracePath?: string;
   evidencePaths?: readonly string[];
@@ -70,6 +72,7 @@ export type BackendAdapter = {
     approvedEvidenceRoots: readonly string[];
   };
   recover?: (jobId: string, signal: AbortSignal) => Promise<{ safe: boolean; evidencePaths: string[] }>;
+  recoveryRoot?: string | ((jobId: string) => string | Promise<string>);
 };
 
 export type BackendOptions = BackendAdapter;
@@ -81,6 +84,7 @@ export class BackendError extends Error {
     message: string,
     readonly category: DomainError['category'] = 'validation',
     readonly evidencePaths: readonly string[] = [],
+    readonly retryable = category === 'transient',
   ) {
     super(message);
   }
@@ -103,10 +107,71 @@ function relativeEvidence(root: string, path: string): string {
   return result;
 }
 
+function isAmbiguous(cause: unknown): boolean {
+  if (cause instanceof BackendError) return cause.category === 'ambiguousState' || cause.code.includes('TIMEOUT') || cause.code.includes('UNCERTAIN');
+  const value = isRecord(cause) ? cause : {};
+  const code = typeof value.code === 'string' ? value.code : '';
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return code === 'TIMEOUT' || code === 'TRANSPORT_AMBIGUOUS' || code === 'ACK_UNKNOWN' || /ambiguous|unknown|timeout|lost reply/i.test(message);
+}
+
+function acknowledgement(value: unknown, stage: string, require?: 'quiescent' | 'unchanged'): LifecycleAcknowledgement {
+  if (!isRecord(value) || value.acknowledged !== true || (require && value[require] !== true)) {
+    throw new BackendError(`${stage.toUpperCase()}_UNACKNOWLEDGED`, `${stage} did not return the required acknowledgement`, 'ambiguousState', [], false);
+  }
+  return value as LifecycleAcknowledgement;
+}
+
+function pathInside(root: string, target: string): boolean {
+  const value = relative(root, target);
+  return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value));
+}
+
+async function canonicalBundle(root: string): Promise<string> {
+  if (!isAbsolute(root)) throw new BackendError('BUNDLE_ROOT_INVALID', 'staging bundle must be absolute');
+  await mkdir(root, { recursive: true });
+  const stat = await lstat(root);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) throw new BackendError('BUNDLE_ROOT_INVALID', 'staging bundle must be a real directory');
+  return realpath(root);
+}
+
+/** Create/check every path component; no write is permitted through a symlink. */
+async function safeBundlePath(root: string, relativePath: string, createParents = false): Promise<string> {
+  if (isAbsolute(relativePath) || relativePath.includes('\0') || relativePath.split(/[\\/]+/).includes('..')) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence path is not a safe relative path');
+  const canonicalRoot = await canonicalBundle(root);
+  const target = resolve(canonicalRoot, relativePath);
+  if (!pathInside(canonicalRoot, target)) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence path escapes the staging bundle');
+  const parts = relative(canonicalRoot, target).split(sep).filter(Boolean);
+  let current = canonicalRoot;
+  const last = parts.length - 1;
+  for (let index = 0; index < parts.length; index += 1) {
+    current = resolve(current, parts[index]!);
+    try {
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence path traverses a symlink');
+      if (index < last && !stat.isDirectory()) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence parent is not a directory');
+    } catch (cause) {
+      if (cause instanceof BackendError) throw cause;
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT' || !createParents) throw cause;
+      if (index === last) return current;
+      await mkdir(current);
+      const made = await lstat(current);
+      if (made.isSymbolicLink() || !made.isDirectory()) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence parent was redirected');
+    }
+  }
+  return current;
+}
+
+async function writeSafeEvidence(root: string, path: string, value: unknown): Promise<void> {
+  const destination = await safeBundlePath(root, path, true);
+  try { const existing = await lstat(destination); if (existing.isSymbolicLink() || !existing.isFile()) throw new BackendError('EVIDENCE_PATH_INVALID', 'evidence destination is not a regular file'); } catch (cause) { if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause; }
+  await writeFile(destination, JSON.stringify(value));
+}
+
 function errorFor(cause: unknown, fallback: string): BackendError {
   if (cause instanceof BackendError) return cause;
-  if (cause instanceof Error && isRecord(cause) && typeof cause.code === 'string') return new BackendError(cause.code, cause.message, 'ambiguousState');
-  return new BackendError(fallback, cause instanceof Error ? cause.message : String(cause), 'ambiguousState');
+  if (cause instanceof Error && isRecord(cause) && typeof cause.code === 'string') return new BackendError(cause.code, cause.message, isAmbiguous(cause) ? 'ambiguousState' : 'validation', [], false);
+  return new BackendError(fallback, cause instanceof Error ? cause.message : String(cause), isAmbiguous(cause) ? 'ambiguousState' : 'validation', [], false);
 }
 
 function blockedResult(code: string, message: string, category: DomainError['category'] = 'capability'): QualificationResult {
@@ -123,17 +188,21 @@ export class PhotoshopBackend {
   constructor(private readonly adapter: BackendAdapter) {}
 
   async capabilities(signal: AbortSignal): Promise<CapabilityReport> {
-    return this.adapter.lock.runExclusive('capabilities', async () => {
-      checkpoint(signal);
-      return CapabilityReportSchema.parse(await this.adapter.capabilities(signal));
-    }, signal);
+    try {
+      return await this.adapter.lock.runExclusive('capabilities', async () => {
+        checkpoint(signal);
+        return CapabilityReportSchema.parse(await this.adapter.capabilities(signal));
+      }, signal);
+    } catch (cause) { throw errorFor(cause, 'CAPABILITIES_FAILED'); }
   }
 
   async inspect(templatePath: string, signal: AbortSignal): Promise<InspectionReport> {
-    return this.adapter.lock.runExclusive(`inspect-${templatePath}`, async () => {
-      checkpoint(signal);
-      return InspectionReportSchema.parse(await this.adapter.inspect(templatePath, signal));
-    }, signal);
+    try {
+      return await this.adapter.lock.runExclusive(`inspect-${templatePath}`, async () => {
+        checkpoint(signal);
+        return InspectionReportSchema.parse(await this.adapter.inspect(templatePath, signal));
+      }, signal);
+    } catch (cause) { throw errorFor(cause, 'INSPECTION_FAILED'); }
   }
 
   async qualify(request: QualificationRequest, signal: AbortSignal): Promise<QualificationResult> {
@@ -153,18 +222,31 @@ export class PhotoshopBackend {
   }
 
   async render(request: RenderRequest, signal: AbortSignal): Promise<RenderEvidence> {
-    const parsed = RenderRequestSchema.parse(request);
-    return this.adapter.lock.runExclusive(parsed.jobId, async () => this.renderLocked(parsed, signal), signal);
+    try {
+      const parsed = RenderRequestSchema.parse(request);
+      return await this.adapter.lock.runExclusive(parsed.jobId, async () => this.renderLocked(parsed, signal), signal);
+    } catch (cause) { throw errorFor(cause, 'RENDER_REQUEST_INVALID'); }
   }
 
   async recover(jobId: string, signal: AbortSignal): Promise<{ safe: boolean; evidencePaths: string[] }> {
-    return this.adapter.lock.runExclusive(`recover-${jobId}`, async () => {
-      checkpoint(signal);
-      if (!this.adapter.recover) return { safe: false, evidencePaths: [] };
-      const result = await this.adapter.recover(jobId, signal);
-      if (!result || typeof result.safe !== 'boolean' || !Array.isArray(result.evidencePaths)) throw new BackendError('RECOVERY_RESULT_INVALID', 'recovery returned an invalid result');
-      return { safe: result.safe, evidencePaths: result.evidencePaths.map((path) => relativeEvidence(process.cwd(), path)) };
-    }, signal);
+    try {
+      return await this.adapter.lock.runExclusive(`recover-${jobId}`, async () => {
+        checkpoint(signal);
+        if (!this.adapter.recover) return { safe: false, evidencePaths: [] };
+        const result = await this.adapter.recover(jobId, signal);
+        if (!result || typeof result.safe !== 'boolean' || !Array.isArray(result.evidencePaths)) throw new BackendError('RECOVERY_RESULT_INVALID', 'recovery returned an invalid result');
+        const root = typeof this.adapter.recoveryRoot === 'function' ? await this.adapter.recoveryRoot(jobId) : this.adapter.recoveryRoot;
+        if (!root && result.evidencePaths.some((path) => isAbsolute(path))) throw new BackendError('RECOVERY_PATH_INVALID', 'absolute recovery evidence requires a trusted recovery root');
+        const canonicalRoot = root ? await canonicalBundle(root) : undefined;
+        const evidencePaths: string[] = [];
+        for (const path of result.evidencePaths) {
+          const relativePath = canonicalRoot ? relativeEvidence(canonicalRoot, path) : relativeEvidence('.', path);
+          if (canonicalRoot) await safeBundlePath(canonicalRoot, relativePath);
+          evidencePaths.push(relativePath);
+        }
+        return { safe: result.safe, evidencePaths };
+      }, signal);
+    } catch (cause) { throw errorFor(cause, 'RECOVERY_FAILED'); }
   }
 
   private async renderLocked(request: RenderRequest, signal: AbortSignal): Promise<RenderEvidence> {
@@ -183,11 +265,12 @@ export class PhotoshopBackend {
       if (!session || !session.workingTemplatePath || !session.openRoot || !session.verifyGraph || !session.renderResource || !session.verifyPropagation || !session.exporter || !session.verifyOriginals || !session.discard) throw new BackendError('TRANSACTION_ADAPTER_INVALID', 'working-copy transaction is incomplete', 'capability');
       const bundleRoot = session.bundleRoot ?? request.stagingDirectory;
       if (!isAbsolute(bundleRoot) || resolve(bundleRoot) !== resolve(request.stagingDirectory)) throw new BackendError('BUNDLE_ROOT_INVALID', 'transaction bundle root must equal request stagingDirectory');
-      await mkdir(bundleRoot, { recursive: true });
+      const canonicalRoot = await canonicalBundle(bundleRoot);
+      if (canonicalRoot !== await canonicalBundle(request.stagingDirectory)) throw new BackendError('BUNDLE_ROOT_INVALID', 'transaction bundle root is not the canonical staging directory');
 
       // The session owns the isolated copy; these calls deliberately precede every mutation.
-      checkpoint(signal); await session.openRoot();
-      checkpoint(signal); await session.verifyGraph(request);
+      checkpoint(signal); acknowledgement(await session.openRoot(), 'openRoot');
+      checkpoint(signal); acknowledgement(await session.verifyGraph(request), 'verifyGraph');
 
       const placements: RenderPlacement[] = [];
       const seen = new Set<string>();
@@ -202,7 +285,7 @@ export class PhotoshopBackend {
       }
       if (placements.length === 0) throw new BackendError('TARGETS_MISSING', 'qualified profile has no distinct target resources');
 
-      checkpoint(signal); await session.verifyPropagation([...session.resources], signal);
+      checkpoint(signal); acknowledgement(await session.verifyPropagation([...session.resources], signal), 'verifyPropagation');
       if (request.profile.output.format === 'jpeg' && !session.jpegBackground) throw new BackendError('EXPORT_POLICY_INVALID', 'qualified JPEG background policy is missing', 'capability');
       const exported: ExportResult = await exportVariants({
         bundleRoot,
@@ -215,9 +298,13 @@ export class PhotoshopBackend {
         ...(request.profile.output.format === 'jpeg' ? { qualityEvidence: session.qualityEvidence ?? { unit: '1-100' as const } } : {}),
         signal,
       });
+      for (const artifact of exported.artifacts) await safeBundlePath(canonicalRoot, artifact.path);
+      for (const visibility of exported.visibility) await safeBundlePath(canonicalRoot, visibility.evidencePath);
+      for (const path of session.evidencePaths ?? []) await safeBundlePath(canonicalRoot, relativeEvidence(canonicalRoot, path));
 
       checkpoint(signal);
-      if (!await session.verifyOriginals()) throw new BackendError('SOURCE_MUTATED', 'master or linked dependency hash changed', 'ambiguousState');
+      const originals = acknowledgement(await session.verifyOriginals(), 'verifyOriginals', 'unchanged');
+      if (originals.dependenciesUnchanged !== true) throw new BackendError('SOURCE_MUTATED', 'master or linked dependency hash changed', 'ambiguousState', [], false);
 
       const checks = [
         ...placements.map((placement, index) => ({ id: `geometry-${index + 1}`, passed: true, evidencePath: `checks/geometry-${index + 1}.json` })),
@@ -225,14 +312,13 @@ export class PhotoshopBackend {
         { id: 'source-integrity', passed: true, evidencePath: 'checks/source-integrity.json' },
       ];
       for (const check of checks) {
-        await mkdir(resolve(bundleRoot, check.evidencePath, '..'), { recursive: true });
-        await writeFile(resolve(bundleRoot, check.evidencePath), JSON.stringify({ id: check.id, passed: check.passed }));
+        await writeSafeEvidence(canonicalRoot, check.evidencePath, { id: check.id, passed: check.passed });
       }
       const documentTracePath = relativeEvidence(bundleRoot, session.documentTracePath ?? resolve(bundleRoot, 'document-trace.json'));
       const toolTracePath = relativeEvidence(bundleRoot, session.toolTracePath ?? resolve(bundleRoot, 'tool-trace.json'));
       for (const path of [documentTracePath, toolTracePath]) {
-        await mkdir(resolve(bundleRoot, path, '..'), { recursive: true });
-        try { await access(resolve(bundleRoot, path)); } catch { await writeFile(resolve(bundleRoot, path), JSON.stringify({ jobId: request.jobId, assetId: request.asset.assetId })); }
+        const destination = await safeBundlePath(canonicalRoot, path, true);
+        try { await access(destination); } catch { await writeSafeEvidence(canonicalRoot, path, { jobId: request.jobId, assetId: request.asset.assetId }); }
       }
       const evidence = RenderEvidenceSchema.parse({
         schemaVersion: 1,
@@ -249,12 +335,16 @@ export class PhotoshopBackend {
         documentTracePath,
         toolTracePath,
       });
-      await session.discard();
+      acknowledgement(await session.discard(), 'discard', 'quiescent');
       cleanupComplete = true;
       return evidence;
     } catch (cause) {
       if (session && !cleanupComplete) {
-        try { await session.discard(); cleanupComplete = true; } catch { await this.adapter.lock.markUnknownMutation?.().catch(() => undefined); }
+        if (isAmbiguous(cause)) {
+          await this.adapter.lock.markUnknownMutation?.().catch(() => undefined);
+        } else {
+          try { acknowledgement(await session.discard(), 'discard', 'quiescent'); cleanupComplete = true; } catch { await this.adapter.lock.markUnknownMutation?.().catch(() => undefined); }
+        }
       }
       throw errorFor(cause, 'RENDER_BLOCKED');
     }

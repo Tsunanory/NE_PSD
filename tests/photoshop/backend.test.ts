@@ -1,10 +1,10 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { RenderRequestSchema } from '@ne-psd/contracts';
-import { createPhotoshopBackend, type BackendAdapter, type RenderSession } from '../../packages/photoshop/src/backend.js';
+import { createPhotoshopBackend, type BackendAdapter, type LifecycleAcknowledgement, type RenderSession } from '../../packages/photoshop/src/backend.js';
 
 const capability = {
   backendId: 'alisaitteke' as const,
@@ -24,7 +24,7 @@ async function request(stagingDirectory: string) {
   return RenderRequestSchema.parse({ ...input, stagingDirectory, profile });
 }
 
-function session(events: string[], failVariant?: string): RenderSession {
+function session(events: string[], failVariant?: string, overrides: Partial<RenderSession> = {}): RenderSession {
   let visible: '1' | '2' | '3' = '1';
   const target = { documentRoute: [], layerPath: [{ name: 'Target', kind: 'smartObject' as const, fingerprint: 'target-fp' }] };
   const reference = { left: 100, top: 200, right: 900, bottom: 600 };
@@ -46,18 +46,19 @@ function session(events: string[], failVariant?: string): RenderSession {
   return {
     ...root,
     exporter,
-    openRoot: async () => { events.push('open-root'); },
-    verifyGraph: async () => { events.push('verify-graph'); },
+    openRoot: async (): Promise<LifecycleAcknowledgement> => { events.push('open-root'); return { acknowledged: true }; },
+    verifyGraph: async (): Promise<LifecycleAcknowledgement> => { events.push('verify-graph'); return { acknowledged: true }; },
     renderResource: async () => { events.push('render-resource'); return { target, reference, placed: reference, fitMode: 'cover', clipped: true, adjacentToReference: true }; },
-    verifyPropagation: async () => { events.push('verify-propagation'); },
-    verifyOriginals: async () => { events.push('verify-originals'); return true; },
-    discard: async () => { events.push('discard'); },
+    verifyPropagation: async (): Promise<LifecycleAcknowledgement> => { events.push('verify-propagation'); return { acknowledged: true }; },
+    verifyOriginals: async () => { events.push('verify-originals'); return { acknowledged: true, unchanged: true, dependenciesUnchanged: true }; },
+    discard: async () => { events.push('discard'); return { acknowledged: true, quiescent: true }; },
+    ...overrides,
   };
 }
 
-function adapter(events: string[], makeSession: () => RenderSession): BackendAdapter {
+function adapter(events: string[], makeSession: () => RenderSession, markUnknownMutation?: () => Promise<void>): BackendAdapter {
   return {
-    lock: { runExclusive: async (_id, fn) => fn() },
+    lock: { runExclusive: async (_id, fn) => fn(), ...(markUnknownMutation ? { markUnknownMutation } : {}) },
     capabilities: async () => capability,
     inspect: async () => { throw new Error('not used'); },
     createWorkingCopy: async () => { events.push('working-copy'); return makeSession(); },
@@ -68,6 +69,12 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
   it('isolates, renders and discards each asset transaction before returning strict evidence', async () => {
     const firstRoot = await mkdtemp(join(tmpdir(), 'b12-first-'));
     const secondRoot = await mkdtemp(join(tmpdir(), 'b12-second-'));
+    const sourcePath = join(firstRoot, 'source.png');
+    const dependencyPath = join(firstRoot, 'dependency.psb');
+    await writeFile(sourcePath, 'immutable-source');
+    await writeFile(dependencyPath, 'immutable-dependency');
+    const sourceBefore = await readFile(sourcePath);
+    const dependencyBefore = await readFile(dependencyPath);
     const events: string[] = [];
     const backend = createPhotoshopBackend(adapter(events, () => session(events)));
     const first = await backend.render(await request(firstRoot), new AbortController().signal);
@@ -77,6 +84,12 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
     expect(events.filter((event) => event === 'working-copy')).toHaveLength(2);
     expect(events.indexOf('discard')).toBeLessThan(events.lastIndexOf('working-copy'));
     expect(events).toContain('verify-originals');
+    expect(events.filter((event) => event === 'render-resource')).toHaveLength(2);
+    for (const artifact of first.artifacts) await access(join(firstRoot, artifact.path));
+    await access(join(firstRoot, first.documentTracePath));
+    await access(join(firstRoot, first.toolTracePath));
+    expect(await readFile(sourcePath)).toEqual(sourceBefore);
+    expect(await readFile(dependencyPath)).toEqual(dependencyBefore);
   });
 
   it('does not return evidence after a variant failure and still discards the owned copy', async () => {
@@ -86,5 +99,44 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
     await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'EXPORT_UNACKNOWLEDGED' });
     expect(events).toContain('discard');
     expect(events).not.toContain('verify-originals');
+  });
+
+  it('rejects malformed lifecycle acknowledgements without sealing evidence', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b12-ack-'));
+    const events: string[] = [];
+    const broken = session(events, undefined, { openRoot: async () => undefined as never });
+    let marked = false;
+    const backend = createPhotoshopBackend(adapter(events, () => broken, async () => { marked = true; }));
+    await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'OPENROOT_UNACKNOWLEDGED', category: 'ambiguousState', retryable: false, evidencePaths: [] });
+    expect(marked).toBe(true);
+    expect(events).not.toContain('discard');
+  });
+
+  it('preserves the recovery barrier after an ambiguous mutation and retains existing traces', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b12-ambiguous-'));
+    const trace = join(root, 'document-trace.json');
+    await writeFile(trace, 'prior-trace');
+    const events: string[] = [];
+    let marked = false;
+    const ambiguous = session(events, undefined, {
+      documentTracePath: trace,
+      renderResource: async () => { events.push('render-resource'); throw Object.assign(new Error('lost reply'), { code: 'TRANSPORT_AMBIGUOUS' }); },
+    });
+    const backend = createPhotoshopBackend(adapter(events, () => ambiguous, async () => { marked = true; }));
+    await expect(backend.render(await request(root), new AbortController().signal)).rejects.toMatchObject({ category: 'ambiguousState', retryable: false });
+    expect(marked).toBe(true);
+    expect(events).not.toContain('discard');
+    expect(await readFile(trace, 'utf8')).toBe('prior-trace');
+  });
+
+  it('rejects an unsealed profile before opening a working copy', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b12-unsealed-'));
+    const events: string[] = [];
+    const backend = createPhotoshopBackend(adapter(events, () => session(events)));
+    const unsealed = await request(root);
+    unsealed.profile.profileSha256 = '0'.repeat(64);
+    unsealed.profile.qualificationId = '';
+    await expect(backend.render(unsealed, new AbortController().signal)).rejects.toMatchObject({ code: 'RENDER_REQUEST_INVALID', category: 'validation', retryable: false, evidencePaths: [] });
+    expect(events).not.toContain('working-copy');
   });
 });
