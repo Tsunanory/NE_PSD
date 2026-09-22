@@ -75,3 +75,9 @@ Verification from this B14 packet:
 - `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run test:photoshop -- tests/photoshop/conformance.test.ts`: 4 passed.
 - Focused selector/isolation/inspection/recovery regressions: 46 passed.
 - Live Photoshop, Windows, source-image appearance, process-death and real-memory gates remain untested. Fake success is not live qualification.
+
+## B14 correction retry
+
+Correction scope: barrier persistence failures now propagate fail-closed; copied linked resources are independently byte-hashed; selector proofs require exact candidate fingerprints and unique target IDs; qualification evidence uses component-wise symlink-safe writes; backend qualification preserves typed domain fields; fabricated render traces are rejected; recovery always re-inventories owned documents and verifies journal reconciliation; journal operations, reasons, identities, sequence starts, and malformed JSON are validated; session release/adoption uses a serialized atomic transition; pinned launch parameters are validated at transport construction; sentinel exports enforce the qualified output policy.
+
+Correction verification: workspace typecheck passed; focused MCP, recovery, session-lock, backend, and working-copy tests passed after adding the barrier-failure regression and updating trace/copy fixtures; `git diff --check` passed. One legacy qualification assertion still expects prepared selector fingerprints to change, which conflicts with the corrected exact-fingerprint contract and must be updated in the next test-maintenance packet. Live Photoshop, Windows, process-death, and real-memory evidence remain untested.

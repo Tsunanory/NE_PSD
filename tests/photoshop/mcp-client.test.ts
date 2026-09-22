@@ -84,4 +84,16 @@ describe('MCP primitive qualification wrapper', () => {
     expect(() => buildPinnedLaunchParameters({ nodeExecutable: '/bin/npx', serverEntry: '/repo/node_modules/@alisaitteke/photoshop-mcp/dist/index.js', explicitArgs: [] })).toThrowError(McpClientError);
     expect(() => buildPinnedLaunchParameters({ nodeExecutable: '/bin/node', serverEntry: '/repo/server.js', explicitArgs: [] })).toThrowError(McpClientError);
   });
+
+  it('fails closed when the recovery barrier cannot be persisted', async () => {
+    let released = false;
+    const lock = {
+      runExclusive: async (_operationId: string, fn: () => Promise<unknown>) => { try { const value = await fn(); released = true; return value; } catch (error) { throw error; } },
+      markUnknownMutation: async () => { throw new Error('barrier disk failure'); },
+    };
+    const delayed: ToolTransport = { async listTools() { return { tools: fixture.tools }; }, async callTool() { return new Promise(() => undefined); } };
+    const client = new McpClient({ transport: delayed, toolMap: buildToolMap(fixture.tools), sessionLock: lock, timeouts: { scale: 5 } });
+    await expect(lock.runExclusive('barrier-failure', () => client.callRaw('fixture_scale', { percent: 100 }))).rejects.toMatchObject({ code: 'JOURNAL_WRITE_FAILED', category: 'ambiguousState' });
+    expect(released).toBe(false);
+  });
 });

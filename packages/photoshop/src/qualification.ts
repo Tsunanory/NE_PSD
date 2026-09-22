@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import sharp from 'sharp';
@@ -6,7 +6,7 @@ import {
   CapabilityReportSchema,
   QualificationResultSchema,
   TemplateCandidateSchema,
-  validateQualificationRequest,
+  validateQualificationRequest as contractValidateQualificationRequest,
   type CapabilityReport,
   type ConfigurationProposal,
   type DomainError,
@@ -137,6 +137,8 @@ export type QualificationAdapter = {
 export type QualificationOptions = { adapter: QualificationAdapter; sentinel?: SentinelImagePrimitive; approvedCapability: true; approvedTemplateRoots: readonly string[]; approvedEvidenceRoots: readonly string[] };
 
 const domainError = (code: string, message: string, category: DomainError['category'] = 'validation', evidencePaths: string[] = []): DomainError => ({ code, category, message, retryable: category === 'transient', evidencePaths });
+let activeQualificationOutput: NonNullable<QualificationRequest['proposal']['output']> | undefined;
+function validateQualificationRequest(request: QualificationRequest): ReturnType<typeof contractValidateQualificationRequest> { activeQualificationOutput = request.proposal.output ?? undefined; return contractValidateQualificationRequest(request); }
 const pathEscape = (path: string): boolean => path.includes('\0') || path.split(/[\\/]+/).includes('..');
 const within = (root: string, target: string): boolean => { const value = relative(root, target); return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value)); };
 async function existingCanonical(path: string): Promise<string> { return realpath(path); }
@@ -147,7 +149,14 @@ async function rootContains(roots: readonly string[], path: string, allowMissing
 }
 async function writeEvidence(root: string, relativePath: string, value: unknown): Promise<string> {
   if (pathEscape(relativePath) || relativePath.startsWith('/') || !within(resolve(root), resolve(root, relativePath))) throw new QualificationError('EVIDENCE_PATH_ESCAPE', `evidence path escapes trusted root: ${relativePath}`);
-  const destination = resolve(root, relativePath); await mkdir(resolve(destination, '..'), { recursive: true }); await writeFile(destination, typeof value === 'string' || value instanceof Uint8Array ? value : JSON.stringify(value, null, 2)); return relativePath;
+  const canonicalRoot = await realpath(root); const parts = relative(canonicalRoot, resolve(canonicalRoot, relativePath)).split(/[\\/]/).filter(Boolean); let current = canonicalRoot;
+  for (let index = 0; index < parts.length; index += 1) {
+    current = resolve(current, parts[index]!);
+    try { const stat = await lstat(current); if (stat.isSymbolicLink()) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence path traverses a symlink'); if (index < parts.length - 1 && !stat.isDirectory()) throw new QualificationError('EVIDENCE_PATH_INVALID', 'evidence parent is not a directory'); }
+    catch (error) { if (error instanceof QualificationError) throw error; if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; if (index === parts.length - 1) break; await mkdir(current); const made = await lstat(current); if (made.isSymbolicLink() || !made.isDirectory()) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence parent could not be created safely'); }
+  }
+  const destination = resolve(canonicalRoot, relativePath); try { if ((await lstat(destination)).isSymbolicLink()) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence destination is a symlink'); } catch (error) { if (error instanceof QualificationError) throw error; if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  await writeFile(destination, typeof value === 'string' || value instanceof Uint8Array ? value : JSON.stringify(value, null, 2)); return relativePath;
 }
 async function existsInside(root: string, relativePath: string): Promise<boolean> { if (pathEscape(relativePath) || relativePath.startsWith('/') || !within(resolve(root), resolve(root, relativePath))) return false; try { await access(resolve(root, relativePath)); return true; } catch { return false; } }
 function selectorsFromInspection(inspection: InspectionReport, proposal: ConfigurationProposal): SelectorProof {
@@ -158,13 +167,15 @@ function selectorsFromInspection(inspection: InspectionReport, proposal: Configu
 }
 function validSelectorProof(proof: SelectorProof, preparedSha256: string, inspection: InspectionReport, proposal: ConfigurationProposal): boolean {
   const expected = new Set(inspection.candidates.map((candidate) => candidate.candidateId)); const targetIds = new Set(proposal.targets.map((target) => target.targetCandidateId));
+  if (targetIds.size !== proposal.targets.length || new Set(proof.targets.map((target) => target.targetCandidateId)).size !== proof.targets.length) return false;
   if (proof.preparedSha256 !== preparedSha256 || proof.targets.length !== proposal.targets.length || proof.variants.length !== 3) return false;
   if (proof.targets.some((target) => !expected.has(target.targetCandidateId) || !targetIds.has(target.targetCandidateId) || !expected.has(target.referenceCandidateId) || (target.inputCandidateId !== null && !expected.has(target.inputCandidateId)))) return false;
   if (proof.variants.some((variant) => !expected.has(variant.candidateId))) return false;
   const byId = new Map(inspection.candidates.map((candidate) => [candidate.candidateId, candidate.selector]));
-  const routeShape = (selector: LayerSelector | null | undefined): unknown => selector && { documentRoute: selector.documentRoute.map((path) => path.map(({ name, kind }) => ({ name, kind }))), layerPath: selector.layerPath.map(({ name, kind }) => ({ name, kind })) };
-  if (proof.targets.some((target) => !same(routeShape(target.target), routeShape(byId.get(target.targetCandidateId))) || !same(routeShape(target.reference), routeShape(byId.get(target.referenceCandidateId))) || (target.inputCandidateId !== null && !same(routeShape(target.input), routeShape(byId.get(target.inputCandidateId)))))) return false;
-  if (proof.variants.some((variant) => !same(routeShape(variant.group), routeShape(byId.get(variant.candidateId))))) return false;
+  const proposalByTarget = new Map(proposal.targets.map((target) => [target.targetCandidateId, target]));
+  if (proof.targets.some((target) => { const expectedTarget = proposalByTarget.get(target.targetCandidateId); return !expectedTarget || target.referenceCandidateId !== expectedTarget.referenceCandidateId || target.inputCandidateId !== expectedTarget.inputCandidateId || !same(target.target, byId.get(target.targetCandidateId)) || !same(target.reference, byId.get(target.referenceCandidateId)) || (target.inputCandidateId !== null && !same(target.input, byId.get(target.inputCandidateId))); })) return false;
+  const proposalVariants = new Map(proposal.variants.map((variant) => [variant.id, variant]));
+  if (proof.variants.some((variant) => !proposalVariants.has(variant.id) || proposalVariants.get(variant.id)!.groupCandidateId !== variant.candidateId || !same(variant.group, byId.get(variant.candidateId)))) return false;
   return new Set(proof.variants.map((variant) => variant.id)).size === 3;
 }
 function fileRef(path: string, sha256: string, rootId: string): FileRef { return { rootId, relativePath: `prepared/${path.split(/[\\/]/).at(-1) ?? 'template.psd'}`, sha256 }; }
@@ -174,7 +185,9 @@ function candidate(request: QualificationRequest, template: FileRef, selectors: 
 function blocked(errors: DomainError[], checks: Array<{ id: string; passed: boolean; evidencePath: string }>, evidencePaths: string[]): QualificationResult { return QualificationResultSchema.parse({ status: 'blocked', candidate: null, checks, evidencePaths, errors }); }
 async function sentinel(path: string): Promise<void> { const pixels = Buffer.alloc(32 * 32 * 4); const put = (x: number, y: number, color: [number, number, number, number]) => pixels.set(color, (y * 32 + x) * 4); put(0, 0, [240, 32, 32, 255]); put(31, 0, [32, 220, 64, 255]); put(0, 31, [48, 96, 240, 255]); put(31, 31, [240, 200, 32, 255]); for (let i = 8; i < 24; i += 1) { put(15, i, [255, 255, 255, 255]); put(16, i, [255, 255, 255, 255]); put(i, 15, [255, 255, 255, 255]); put(i, 16, [255, 255, 255, 255]); } await mkdir(resolve(path, '..'), { recursive: true }); await sharp(pixels, { raw: { width: 32, height: 32, channels: 4 } }).png().toFile(path); }
 function closeColor(actual: number, expected: number): boolean { return Math.abs(actual - expected) <= 16; }
-async function inspectExport(path: string, variantId: '1' | '2' | '3'): Promise<string> {
+async function inspectExport(path: string, variantId: '1' | '2' | '3', output: NonNullable<QualificationRequest['proposal']['output']> = activeQualificationOutput ?? { format: 'png', width: 32, height: 32, colorSpace: 'sRGB', quality: 90 }): Promise<string> {
+  const metadata = await sharp(path).metadata();
+  if (metadata.format !== output.format || metadata.width !== output.width || metadata.height !== output.height) throw new QualificationError('SENTINEL_OUTPUT_POLICY_FAILED', `variant ${variantId} dimensions or format do not match the qualified output policy`);
   const image = await sharp(path).ensureAlpha().raw().toBuffer({ resolveWithObject: true }); const { data, info } = image; if (info.width < 4 || info.height < 4 || info.channels !== 4) throw new QualificationError('SENTINEL_IMAGE_INVALID', `variant ${variantId} is not a decoded RGBA image`);
   const pixels = (x: number, y: number) => { const at = (y * info.width + x) * 4; return [data[at]!, data[at + 1]!, data[at + 2]!, data[at + 3]!] as const; };
   const corners = [[pixels(0, 0), [240, 32, 32]], [pixels(info.width - 1, 0), [32, 220, 64]], [pixels(0, info.height - 1), [48, 96, 240]], [pixels(info.width - 1, info.height - 1), [240, 200, 32]]] as const;

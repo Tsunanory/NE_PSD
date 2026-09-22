@@ -213,7 +213,7 @@ describe('conservative Photoshop recovery', () => {
       listDocuments: async () => [
         { id: 'child', path: '/job/child.psb', owned: true, dirty: false, parentId: null, depth: 0 },
         { id: 'user', path: '/Users/user.psd', owned: false, dirty: true, parentId: null },
-      ],
+      ].filter((document) => !closed.includes(document.id)),
       isIdle: async () => true,
       verifyOriginals: async () => true,
       closeDiscard: async (id) => { closed.push(id); },

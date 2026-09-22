@@ -138,7 +138,7 @@ export class SessionLock {
     const adopted = { ...prior, pid: this.options.pid ?? process.pid, processStartIdentity: this.processStart(), heartbeatAt: this.options.now() };
     // Serialize adoption and replace the metadata atomically. A stale-owner
     // read followed by an unconditional write could overwrite a new owner.
-    const claimPath = `${this.options.lockPath}.adopt`;
+    const claimPath = `${this.options.lockPath}.transition`;
     try { await mkdir(claimPath); } catch { throw new SessionLockError('RECOVERY_REQUIRED', 'another recovery adoption is in progress'); }
     try {
       const current = JSON.parse(await readFile(this.metadataPath(), 'utf8')) as unknown;
@@ -162,16 +162,22 @@ export class SessionLock {
 
   async release(): Promise<ReleaseResult> {
     const owner = this.owner;
-    let stored: unknown;
-    try { stored = JSON.parse(await readFile(this.metadataPath(), 'utf8')); } catch { return { released: false, reason: 'RECOVERY_REQUIRED' }; }
-    if (!validMetadata(stored) || !owner) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
-    const persisted = stored as LockMetadata;
-    const identityMatches = persisted.hostId === owner.hostId && persisted.installationPath === owner.installationPath && persisted.installationDigest === owner.installationDigest && persisted.pid === owner.pid && persisted.processStartIdentity === owner.processStartIdentity && persisted.operationId === owner.operationId && persisted.ownershipToken === owner.ownershipToken && persisted.journalPath === owner.journalPath;
-    if (!identityMatches) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
-    if (owner.inFlight !== 0 || owner.unsettledOperations !== 0 || owner.unknownMutation || !owner.reconciledJobOwnedDocuments) return { released: false, reason: 'RECOVERY_REQUIRED' };
-    await rm(this.options.lockPath, { recursive: true, force: true });
-    this.owner = null;
-    return { released: true };
+    if (!owner) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
+    const transition = `${this.options.lockPath}.transition`;
+    try { await mkdir(transition); } catch { return { released: false, reason: 'RECOVERY_REQUIRED' }; }
+    try {
+      let stored: unknown; try { stored = JSON.parse(await readFile(this.metadataPath(), 'utf8')); } catch { return { released: false, reason: 'RECOVERY_REQUIRED' }; }
+      if (!validMetadata(stored)) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
+      const persisted = stored as LockMetadata;
+      const identityMatches = persisted.hostId === owner.hostId && persisted.installationPath === owner.installationPath && persisted.installationDigest === owner.installationDigest && persisted.pid === owner.pid && persisted.processStartIdentity === owner.processStartIdentity && persisted.operationId === owner.operationId && persisted.ownershipToken === owner.ownershipToken && persisted.journalPath === owner.journalPath;
+      if (!identityMatches) return { released: false, reason: 'OWNERSHIP_MISMATCH' };
+      if (persisted.inFlight !== 0 || persisted.unsettledOperations !== 0 || persisted.unknownMutation || !persisted.reconciledJobOwnedDocuments) return { released: false, reason: 'RECOVERY_REQUIRED' };
+      const tombstone = `${this.options.lockPath}.release-${owner.ownershipToken}`;
+      await rename(this.options.lockPath, tombstone);
+      this.owner = null;
+      await rm(tombstone, { recursive: true, force: true });
+      return { released: true };
+    } finally { await rm(transition, { recursive: true, force: true }); }
   }
 
   async heartbeat(): Promise<void> { await this.update((m) => { m.heartbeatAt = this.options.now(); }); }

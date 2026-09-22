@@ -1,4 +1,4 @@
-import { access, lstat, mkdir, realpath, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   CapabilityReportSchema,
@@ -189,6 +189,15 @@ function blockedResult(code: string, message: string, category: DomainError['cat
     errors: [{ code, category, message, retryable: category === 'transient', evidencePaths: [] }],
   });
 }
+function blockedFromCause(cause: unknown): QualificationResult {
+  const value = isRecord(cause) ? cause : {};
+  const code = typeof value.code === 'string' && value.code.length > 0 ? value.code : 'QUALIFICATION_FAILED';
+  const message = cause instanceof Error ? cause.message.replace(/^\w+:\s*/, '') : String(cause);
+  const category = typeof value.category === 'string' && ['validation', 'capability', 'transient', 'ambiguousState', 'review', 'cancelled'].includes(value.category) ? value.category as DomainError['category'] : isAmbiguous(cause) ? 'ambiguousState' : 'validation';
+  const evidencePaths = Array.isArray(value.evidencePaths) ? value.evidencePaths.filter((path): path is string => typeof path === 'string') : [];
+  const retryable = typeof value.retryable === 'boolean' ? value.retryable : category === 'transient';
+  return QualificationResultSchema.parse({ status: 'blocked', candidate: null, checks: [], evidencePaths, errors: [{ code, category, message, retryable, evidencePaths }] });
+}
 
 export class PhotoshopBackend {
   constructor(private readonly adapter: BackendAdapter) {}
@@ -222,9 +231,7 @@ export class PhotoshopBackend {
         approvedEvidenceRoots: qualification.approvedEvidenceRoots,
       };
       return QualificationResultSchema.parse(await qualifyTemplate(request, signal, options));
-    } catch (cause) {
-      return blockedResult('QUALIFICATION_FAILED', cause instanceof Error ? cause.message : String(cause), 'ambiguousState');
-    }
+    } catch (cause) { return blockedFromCause(cause); }
   }
 
   async render(request: RenderRequest, signal: AbortSignal): Promise<RenderEvidence> {
@@ -356,8 +363,11 @@ export class PhotoshopBackend {
         await writeSafeEvidence(canonicalRoot, check.evidencePath, { id: check.id, passed: check.passed });
       }
       for (const path of [documentTracePath, toolTracePath]) {
-        const destination = await safeBundlePath(canonicalRoot, path, true);
-        try { await access(destination); } catch { await writeSafeEvidence(canonicalRoot, path, { jobId: request.jobId, assetId: request.asset.assetId }); }
+        let destination: string; try { destination = await safeBundlePath(canonicalRoot, path); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
+        let stat; try { stat = await lstat(destination); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
+        if (!stat.isFile() || stat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `required trace evidence is not a regular file: ${path}`);
+        let trace: unknown; try { trace = JSON.parse(await readFile(destination, 'utf8')); } catch { throw new BackendError('TRACE_INVALID', `required trace evidence is not valid JSON: ${path}`); }
+        if (!isRecord(trace) || (!('preBytes' in trace) && !('preSha256' in trace) && !('postBytes' in trace) && !('postSha256' in trace))) throw new BackendError('TRACE_INVALID', `required trace evidence lacks pre/post bytes or hashes: ${path}`);
       }
       const evidence = RenderEvidenceSchema.parse({
         schemaVersion: 1,

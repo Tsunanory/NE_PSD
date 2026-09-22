@@ -261,7 +261,8 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
       edges.set(node.canonicalPath, nodeEdges);
     }
 
-    for (const entry of nodes.values()) await fileSystem.copy(entry.originalPath, entry.copyPath);
+    const byteSourceHashes = new Map<string, string>();
+    for (const entry of nodes.values()) { byteSourceHashes.set(entry.originalPath, createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex')); await fileSystem.copy(entry.originalPath, entry.copyPath); }
     const copiedByCanonicalPath = new Map<string, WorkingCopyClosureEntry>();
     for (const entry of nodes.values()) copiedByCanonicalPath.set(await Promise.resolve(paths.canonical(entry.copyPath)).catch(() => entry.copyPath), entry);
     for (const entry of nodes.values()) {
@@ -283,17 +284,12 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     }
 
     for (const entry of nodes.values()) {
-      // Relinking can mutate the copied file in place. Re-read the bytes of
-      // every copied node; a declared descriptor digest is only metadata and
-      // cannot establish the actual copy's integrity.
-      const rawSourceHash = createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex');
-      // A portable fixture may expose a semantic hash provider rather than a
-      // byte hash. The default/live filesystem is byte based and is checked
-      // strictly; semantic providers cannot establish copied-byte integrity.
-      if (rawSourceHash === entry.sha256) {
-        const copiedHash = await expectedHash(entry.copyPath, entry.copyPath, undefined, fileSystem);
-        if (copiedHash !== entry.sha256) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied linked resource differs from the isolated source', { path: entry.copyPath, expected: entry.sha256, actual: copiedHash, phase: 'copied-resource' });
-      }
+      // Relinking can mutate the copied file in place. Re-read and hash the
+      // bytes of every copied node. A declared/semantic digest never replaces
+      // this independent byte-level comparison.
+      const rawSourceHash = byteSourceHashes.get(entry.originalPath)!;
+      const copiedHash = createHash('sha256').update(await fileSystem.readFile(entry.copyPath)).digest('hex');
+      if (copiedHash !== rawSourceHash) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied linked resource differs from the isolated source', { path: entry.copyPath, expected: rawSourceHash, actual: copiedHash, declared: entry.sha256, phase: 'copied-resource' });
       const remaining = await options.operation.readLinks(entry.copyPath);
       for (const descriptor of remaining) {
         if (descriptor.sourceKind === 'embedded') continue;

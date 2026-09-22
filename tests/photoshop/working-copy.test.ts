@@ -170,6 +170,7 @@ describe('working-copy isolation', () => {
     const second = 'C:\\job\\dep\\two\\shared.psb';
     const hashes: Record<string, string> = { [master.toLowerCase()]: digest('master'), [first.toLowerCase()]: digest('first'), [second.toLowerCase()]: digest('second') };
     const copied: string[] = [];
+    const copiedBytes: Record<string, Uint8Array> = {};
     const graph: Record<string, LinkedResource[]> = { [master.toLowerCase()]: [{ path: 'dep\\one\\shared.psb', sourceKind: 'linked' }, { path: second, sourceKind: 'linked' }], [first.toLowerCase()]: [], [second.toLowerCase()]: [] };
     const operation: QualifiedLinkOperation = {
       readLinks: async (path) => graph[path.toLowerCase()] ?? [],
@@ -187,7 +188,7 @@ describe('working-copy isolation', () => {
     const operationWithTrace: QualifiedLinkOperation = { ...operation, relink: async (parent, original, copy) => { copied.push(parent, original, copy); await operation.relink!(parent, original, copy); } };
     const result = await createWorkingCopy({
       masterPath: master, trustedRoot: 'C:\\job', attemptRoot: 'C:\\attempt\\one', operation: operationWithTrace, pathSemantics: winPaths,
-      filesystem: { readFile: async (path) => Buffer.from(hashes[path.toLowerCase()] ? path : 'master'), hash: async (path) => hashes[path.toLowerCase()] ?? digest('master'), copy: async (_source, destination) => { copied.push(destination); }, mkdir: async () => undefined, exists: async () => true },
+      filesystem: { readFile: async (path) => copiedBytes[path.toLowerCase()] ?? Buffer.from(path.toLowerCase()), hash: async (path) => hashes[path.toLowerCase()] ?? digest('master'), copy: async (source, destination) => { copied.push(destination); copiedBytes[destination.toLowerCase()] = Buffer.from(source.toLowerCase()); }, mkdir: async () => undefined, exists: async () => true },
     });
     expect(result.attemptRoot).toBe('c:\\attempt\\one');
     expect(result.closure).toHaveLength(3);

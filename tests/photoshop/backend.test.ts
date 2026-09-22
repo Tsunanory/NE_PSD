@@ -61,7 +61,7 @@ function adapter(events: string[], makeSession: () => RenderSession, markUnknown
     lock: { runExclusive: async (_id, fn) => fn(), ...(markUnknownMutation ? { markUnknownMutation } : {}) },
     capabilities: async () => capability,
     inspect: async () => { throw new Error('not used'); },
-    createWorkingCopy: async () => { events.push('working-copy'); return makeSession(); },
+    createWorkingCopy: async (request) => { events.push('working-copy'); const created = makeSession(); const documentTracePath = join(request.stagingDirectory, 'document-trace.json'); const toolTracePath = join(request.stagingDirectory, 'tool-trace.json'); try { await access(documentTracePath); } catch { await writeFile(documentTracePath, JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); } try { await access(toolTracePath); } catch { await writeFile(toolTracePath, JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); } return { ...created, documentTracePath, toolTracePath }; },
   };
 }
 

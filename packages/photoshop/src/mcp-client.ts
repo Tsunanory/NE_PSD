@@ -84,7 +84,7 @@ export class McpClient {
       onSettled: async () => { try { await this.options.sessionLock?.markTransportSettled?.(); } catch { /* owner may already have exited; local tracking remains authoritative */ } },
       onUnknown: async () => {
         this.recoveryRequired = true;
-        try { await this.options.sessionLock?.markUnknownMutation?.(); } catch { /* no owner: the local barrier still applies */ }
+        await this.options.sessionLock?.markUnknownMutation?.();
       },
       call: () => this.options.transport.listTools(),
     });
@@ -129,7 +129,7 @@ export class McpClient {
         onSettled: async () => { try { await this.options.sessionLock?.markTransportSettled?.(); } catch { /* owner may already have exited; local tracking remains authoritative */ } },
         onUnknown: async () => {
           this.recoveryRequired = true;
-          try { await this.options.sessionLock?.markUnknownMutation?.(); } catch { /* no owner: the local barrier still applies */ }
+          await this.options.sessionLock?.markUnknownMutation?.();
         },
         call: () => this.options.transport.callTool({ name: toolName, arguments: args }, signal),
       });
@@ -171,17 +171,21 @@ export class McpClient {
 export type PinnedLaunchParameters = { command: string; args: string[] };
 const absolutePath = (value: string): boolean => value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
 const pathBase = (value: string): string => value.split(/[\\/]/).at(-1) ?? '';
+const shellSyntax = /[;&|`$()<>\n\r]/;
+function validatePinnedLaunch(launch: PinnedLaunchParameters): void {
+  if (!absolutePath(launch.command) || !['node', 'node.exe'].includes(pathBase(launch.command)) || shellSyntax.test(launch.command)) throw new McpClientError('INVALID_LAUNCH', 'command must be an absolute pinned Node executable');
+  if (!Array.isArray(launch.args) || launch.args.length < 1 || !absolutePath(launch.args[0]!) || !launch.args[0]!.replaceAll('\\', '/').endsWith('/node_modules/@alisaitteke/photoshop-mcp/dist/index.js') || shellSyntax.test(launch.args[0]!)) throw new McpClientError('INVALID_LAUNCH', 'first argument must be the absolute vendored Photoshop MCP entry');
+  if (launch.args.some((arg) => typeof arg !== 'string' || arg.length === 0 || shellSyntax.test(arg))) throw new McpClientError('INVALID_LAUNCH', 'launch arguments contain unsafe shell syntax or empty values');
+}
 export function buildPinnedLaunchParameters(input: { nodeExecutable: string; serverEntry: string; explicitArgs: readonly string[] }): PinnedLaunchParameters {
   // Spaces are valid Windows/macOS path characters. Arguments are passed to
   // the child process as an argv array, so rejecting whitespace is neither a
   // safety proof nor necessary. Reject shell metacharacters instead.
-  if (!absolutePath(input.nodeExecutable) || !['node', 'node.exe'].includes(pathBase(input.nodeExecutable)) || /[;&|`$()]/.test(input.nodeExecutable)) throw new McpClientError('INVALID_LAUNCH', 'node executable must be an absolute pinned Node path');
-  if (!absolutePath(input.serverEntry) || !input.serverEntry.replaceAll('\\', '/').endsWith('/node_modules/@alisaitteke/photoshop-mcp/dist/index.js') || /[;&|`$()]/.test(input.serverEntry)) throw new McpClientError('INVALID_LAUNCH', 'server entry must be an absolute vendored Photoshop MCP entry');
-  if (input.explicitArgs.some((arg) => /[;&|`$()]/.test(arg) || arg.length === 0)) throw new McpClientError('INVALID_LAUNCH', 'launch arguments contain shell syntax or are empty');
-  return { command: input.nodeExecutable, args: [input.serverEntry, ...input.explicitArgs] };
+  const launch = { command: input.nodeExecutable, args: [input.serverEntry, ...input.explicitArgs] };
+  validatePinnedLaunch(launch); return launch;
 }
 export async function createPinnedSdkTransport(launch: PinnedLaunchParameters): Promise<ToolTransport> {
-  if (!absolutePath(launch.command) || launch.args.length < 1 || !absolutePath(launch.args[0]!) || !launch.args[0]!.replaceAll('\\', '/').endsWith('/node_modules/@alisaitteke/photoshop-mcp/dist/index.js')) throw new McpClientError('INVALID_LAUNCH', 'launch parameters must come from buildPinnedLaunchParameters');
+  validatePinnedLaunch(launch);
   const transport = new StdioClientTransport({ command: launch.command, args: [...launch.args], stderr: 'pipe' });
   const sdk = new Client({ name: 'ne-psd-photoshop', version: '0.1.0' });
   await sdk.connect(transport);
