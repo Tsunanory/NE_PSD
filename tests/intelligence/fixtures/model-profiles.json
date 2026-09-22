@@ -1,0 +1,14 @@
+{
+  "fixture": true,
+  "profiles": [{
+    "profileId": "fixture-local-qwen",
+    "provider": "local-qwen",
+    "modelId": "Qwen3.8-27B",
+    "provenance": { "kind": "local", "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "runtimeVersion": "fixture", "chatTemplateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "endpoint": "http://127.0.0.1:8080",
+    "quantization": "Q4_K_M",
+    "contextTokens": 4096,
+    "maxOutputTokens": 512,
+    "capabilities": { "jsonSchema": true, "vision": false, "tools": true }
+  }]
+}
