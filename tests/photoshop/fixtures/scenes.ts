@@ -1,8 +1,10 @@
 import type { Rect } from '@ne-psd/contracts';
 import type { DocumentState, LayerState } from '../../../packages/photoshop/src/types.js';
+import { structuralFingerprint, type SelectorDocument } from '../../../packages/photoshop/src/selectors.js';
+import type { LayerSelector } from '@ne-psd/contracts';
 
 export type FakeScene = {
-  root: DocumentState;
+  root: SelectorDocument;
   documents: DocumentState[];
   unrelated: DocumentState;
   layers: LayerState[];
@@ -27,9 +29,10 @@ export function sceneFixture(): FakeScene {
     id: `variant-${id}-static`, parentId: null, name: `${id} картинка`, kind: 'group' as const,
     bounds: null, visible: id === '1', clipped: false, contentKey: null, children: [],
   }));
-  const root: DocumentState = {
+  const root: SelectorDocument = {
     id: 'root-static', path: '/fixtures/template.psd', parentId: null,
     width: 1500, height: 2000, dirty: false, sourceKind: 'root',
+    layers: [],
   };
   const child: DocumentState = {
     id: 'child-static', path: null, parentId: root.id,
@@ -39,5 +42,31 @@ export function sceneFixture(): FakeScene {
     id: 'user-document-static', path: '/Users/owner/notes.psd', parentId: null,
     width: 640, height: 480, dirty: false, sourceKind: 'unknown',
   };
-  return { root, documents: [root, child], unrelated, layers: [reference, placed, ...variants], reference, placed };
+  root.layers = [reference, placed, ...variants];
+  return { root, documents: [root, child], unrelated, layers: root.layers, reference, placed };
+}
+
+export function selectorDocument(scene: FakeScene = sceneFixture()): SelectorDocument {
+  return { ...scene.root, layers: scene.layers };
+}
+
+export function qualifiedVariantSelector(scene: FakeScene = sceneFixture()): LayerSelector {
+  const document = selectorDocument(scene);
+  const layer = document.layers.find((candidate) => candidate.name === '1 картинка')!;
+  return {
+    documentRoute: [],
+    layerPath: [{ name: layer.name, kind: layer.kind, fingerprint: structuralFingerprint(layer, document.layers, [2]) }],
+  };
+}
+
+export function duplicateSiblingScene(): SelectorDocument {
+  const document = selectorDocument();
+  const variant = document.layers.find((layer) => layer.name === '1 картинка')!;
+  document.layers.push({ ...variant, id: 'duplicate-variant', visible: false });
+  return document;
+}
+
+export function reopenedScene(): SelectorDocument {
+  const document = selectorDocument();
+  return { ...document, id: 'reopened-root', layers: document.layers.map((layer, index) => ({ ...layer, id: `reopened-layer-${index}` })) };
 }
