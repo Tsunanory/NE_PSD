@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
-import { mkdirSync, realpathSync, symlinkSync, unlinkSync } from 'node:fs';
+import { mkdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -13,7 +13,7 @@ import type { JobSpec } from '@ne-psd/contracts';
 
 const hash = 'a'.repeat(64);
 const selector = { documentRoute: [], layerPath: [{ name: 'target', kind: 'smartObject' as const, fingerprint: 'f' }] };
-const rootBinding = (rootId = 'out'): OutputRootBinding => { const rawRoot = `/tmp/ne-psd-${rootId}`; mkdirSync(rawRoot, { recursive: true }); const canonicalRoot = realpathSync(rawRoot); return { rootId, canonicalRoot, canonicalRootIdentity: createHash('sha256').update(canonicalRoot).digest('hex') }; };
+const rootBinding = (rootId = 'out'): OutputRootBinding => { const rawRoot = `/tmp/ne-psd-${rootId}`; mkdirSync(rawRoot, { recursive: true }); const canonicalRoot = realpathSync(rawRoot); const info = statSync(canonicalRoot); return { rootId, canonicalRoot, canonicalRootIdentity: createHash('sha256').update(`${canonicalRoot}|${info.dev}|${info.ino}`).digest('hex') }; };
 const spec = (jobId = 'job-1'): JobSpec => {
  const value: JobSpec = ({
   schemaVersion: 1, jobId, outputRootId: 'out', modelProfileId: 'brain', reviewerModelProfileId: 'reviewer', reviewPolicySha256: hash,
@@ -210,6 +210,9 @@ describe('durable repository', () => {
     expect(() => repository.recordPublication({ publicationId: 'wrong-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/untrusted/published' })).toThrow(/output root|binding/i);
     expect(() => repository.recordPublication({ publicationId: 'wrong-key', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'caller-key', path: '/tmp/ne-psd-out/published' })).toThrow(/output root|binding|identity/i);
     repository.recordPublication({ publicationId: 'valid-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/published' });
+    renameSync('/tmp/ne-psd-out', '/tmp/ne-psd-out-replaced');
+    mkdirSync('/tmp/ne-psd-out', { recursive: true });
+    expect(() => repository.recordPublication({ publicationId: 'replaced-root', jobId: 'root-bound', assetId: 'asset-1', attempt: 1, transactionKey: 'root-bound:asset-1:1', path: '/tmp/ne-psd-out/new' })).toThrow(/output root|binding/i);
     repository.close();
   });
 

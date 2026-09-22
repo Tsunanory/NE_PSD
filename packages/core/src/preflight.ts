@@ -6,10 +6,11 @@ import { assertExistingConfinedPath, assertSourceRootReadOnly, canonicalRelative
 export type PreflightFile = { absolutePath: string; relativePath: string; sha256: string; bytes: number; selectedAtMs: number; content: Buffer };
 export type PreflightError = { code: string; path: string; message: string };
 export type SourceRootPolicy = (root: string) => Promise<void> | void;
-export type PreflightOptions = { extensions?: readonly string[]; outputRoot?: string; maxPathBytes?: number; sourceRootPolicy?: SourceRootPolicy; rasterValidator?: (path: string) => Promise<void>; psdValidator?: (path: string) => Promise<boolean> };
+export type ByteValidatorContext = { bytes: Buffer; path: string };
+export type PreflightOptions = { extensions?: readonly string[]; outputRoot?: string; maxPathBytes?: number; sourceRootPolicy?: SourceRootPolicy; rasterValidator?: (context: ByteValidatorContext) => Promise<void>; psdValidator?: (context: ByteValidatorContext) => Promise<boolean> };
 
 function sha256Bytes(bytes: Buffer): string { return createHash('sha256').update(bytes).digest('hex'); }
-async function decodeRaster(path: string): Promise<void> { const sharp = (await import('sharp')).default; try { await sharp(path).toBuffer(); } catch { throw new PathSafetyError('CORRUPT_IMAGE', 'Sharp could not decode the raster image'); } }
+async function decodeRaster(context: ByteValidatorContext): Promise<void> { const sharp = (await import('sharp')).default; try { await sharp(context.bytes).toBuffer(); } catch { throw new PathSafetyError('CORRUPT_IMAGE', 'Sharp could not decode the raster image'); } }
 
 export async function enumerateInputs(inputRoot: string, options: PreflightOptions = {}): Promise<{ files: PreflightFile[]; errors: PreflightError[] }> {
   const root = resolve(inputRoot); const allowed = new Set((options.extensions ?? ['.png', '.jpg', '.jpeg', '.psd', '.psb']).map((ext) => ext.toLowerCase()));
@@ -33,8 +34,8 @@ export async function enumerateInputs(inputRoot: string, options: PreflightOptio
         const bytes = await readFile(absolute); if (bytes.byteLength === 0) throw new PathSafetyError('ZERO_BYTE', 'image is zero bytes');
         if (extension === '.psd' || extension === '.psb') {
           if (!options.psdValidator) throw new PathSafetyError('PSD_VALIDATOR_REQUIRED', 'PSD/PSB validation requires a qualified backend validator');
-          if (!await options.psdValidator(absolute)) throw new PathSafetyError('CORRUPT_IMAGE', 'qualified PSD/PSB validator rejected the file');
-        } else await (options.rasterValidator ?? decodeRaster)(absolute);
+          if (!await options.psdValidator({ bytes, path: absolute })) throw new PathSafetyError('CORRUPT_IMAGE', 'qualified PSD/PSB validator rejected the file');
+        } else await (options.rasterValidator ?? decodeRaster)({ bytes, path: absolute });
         await assertExistingConfinedPath(root, absolute);
         files.push({ absolutePath: absolute, relativePath, sha256: sha256Bytes(bytes), bytes: bytes.byteLength, selectedAtMs: Date.now(), content: bytes });
       } catch (error) { const e = error as PathSafetyError; errors.push({ code: e.code ?? 'INVALID_INPUT', path: relativePath, message: e.message }); }
