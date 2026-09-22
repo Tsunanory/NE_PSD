@@ -15,6 +15,6 @@ export function createJobService(dependencies: JobServiceDependencies): JobServi
     async visualReview(): Promise<null> { return null; },
     async submitVisualAttestation(): Promise<void> { throw new Error('visual attestation is reserved for the review integration'); },
     async snapshot(jobId: string): Promise<JobSnapshot> { return repository.snapshot(jobId); },
-    subscribe(jobId: string, listener: (event: import('@ne-psd/contracts').JobEvent) => void): () => void { let active = true; const timer = setInterval(() => { if (!active) return; const events = repository.events(jobId); const event = events.at(-1); if (event) listener(event); }, 250); timer.unref?.(); return () => { active = false; clearInterval(timer); }; },
+    subscribe(jobId: string, listener: (event: import('@ne-psd/contracts').JobEvent) => void): () => void { let active = true; let sequence = 0; const timer = setInterval(() => { if (!active) return; for (const event of repository.events(jobId)) if (event.sequence > sequence) { sequence = event.sequence; listener(event); } }, 250); timer.unref?.(); return () => { active = false; clearInterval(timer); }; },
   };
 }

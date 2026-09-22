@@ -8,4 +8,13 @@ describe('operation cancellation', () => {
     expect(operation.signal.aborted).toBe(true);
     expect(operation.timedOut()).toBe(true);
   });
+
+  it('disposes a cancelled operation without a later timeout', async () => {
+    const operation = createOperationCancellation(20);
+    operation.cancel('pause');
+    operation.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(operation.timedOut()).toBe(false);
+    expect(operation.signal.aborted).toBe(true);
+  });
 });

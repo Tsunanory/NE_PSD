@@ -10,4 +10,14 @@ describe('backend serialization', () => {
     release();
     await first;
   });
+
+  it('shares the ambiguity latch across workers using one installation lease', async () => {
+    const lease = {};
+    const workerA = BackendSerialization.forLease(lease);
+    const workerB = BackendSerialization.forLease(lease);
+    workerA.block();
+    await expect(workerB.run(async () => undefined)).rejects.toMatchObject({ code: 'MUTATION_BLOCKED' });
+    workerB.clearBlocked();
+    await expect(workerA.run(async () => undefined)).resolves.toBeUndefined();
+  });
 });

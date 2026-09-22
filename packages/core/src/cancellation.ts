@@ -1,4 +1,4 @@
-export type OperationCancellation = { signal: AbortSignal; deadline: Promise<'timeout'>; cancel(reason?: string): void; timedOut(): boolean };
+export type OperationCancellation = { signal: AbortSignal; deadline: Promise<'timeout'>; cancel(reason?: string): void; timedOut(): boolean; dispose(): void };
 
 export function createOperationCancellation(timeoutMs: number, parent?: AbortSignal): OperationCancellation {
   const controller = new AbortController();
@@ -9,5 +9,6 @@ export function createOperationCancellation(timeoutMs: number, parent?: AbortSig
   const deadline = new Promise<'timeout'>((resolve) => { resolveDeadline = resolve; });
   const timer = setTimeout(() => { expired = true; controller.abort('deadline'); resolveDeadline('timeout'); }, Math.max(1, timeoutMs));
   timer.unref?.();
-  return { signal: controller.signal, deadline, cancel: (reason = 'cancelled') => controller.abort(reason), timedOut: () => expired };
+  const dispose = () => { clearTimeout(timer); parent?.removeEventListener('abort', onAbort); };
+  return { signal: controller.signal, deadline, cancel: (reason = 'cancelled') => controller.abort(reason), timedOut: () => expired, dispose };
 }
