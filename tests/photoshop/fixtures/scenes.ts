@@ -10,6 +10,7 @@ export type FakeScene = {
   layers: LayerState[];
   reference: LayerState;
   placed: LayerState;
+  childLayers?: LayerState[];
 };
 
 const bounds = (value: Rect): Rect => ({ ...value });
@@ -25,6 +26,11 @@ export function sceneFixture(): FakeScene {
     bounds: bounds({ left: 20, top: 30, right: 220, bottom: 430 }), visible: true,
     clipped: false, contentKey: 'placed-content', children: [],
   };
+  const childLayers: LayerState[] = [{
+    id: 'vector-static', parentId: null, name: 'Прямоугольник 3', kind: 'shape',
+    bounds: null, rawBounds: null, effectiveBounds: { left: 100, top: 200, right: 900, bottom: 600 },
+    visible: true, clipped: false, contentKey: null, children: [],
+  }];
   const variants = ['1', '2', '3'].map((id) => ({
     id: `variant-${id}-static`, parentId: null, name: `${id} картинка`, kind: 'group' as const,
     bounds: null, visible: id === '1', clipped: false, contentKey: null, children: [],
@@ -43,7 +49,8 @@ export function sceneFixture(): FakeScene {
     width: 640, height: 480, dirty: false, sourceKind: 'unknown',
   };
   root.layers = [reference, placed, ...variants];
-  return { root, documents: [root, child], unrelated, layers: root.layers, reference, placed };
+  placed.childDocument = { ...root, id: child.id, parentId: root.id, path: null, width: child.width, height: child.height, sourceKind: child.sourceKind, layers: childLayers, childDocuments: [] };
+  return { root, documents: [root, child], unrelated, layers: root.layers, reference, placed, childLayers };
 }
 
 export function selectorDocument(scene: FakeScene = sceneFixture()): SelectorDocument {

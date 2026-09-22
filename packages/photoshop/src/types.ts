@@ -1,4 +1,5 @@
 import { RenderRequestSchema, type FitMode, type LayerSelector, type Rect, type RenderRequest } from '@ne-psd/contracts';
+import type { SelectorDocument } from './selectors.js';
 
 export type DocumentId = string;
 export type LayerId = string;
@@ -23,6 +24,12 @@ export type LayerState = {
   clipped: boolean;
   contentKey: string | null;
   children: LayerState[];
+  /** Optional observed geometry from Photoshop's DOM, distinct from raster bounds. */
+  rawBounds?: Rect | null;
+  effectiveBounds?: Rect | null;
+  mask?: unknown;
+  typeMetadata?: unknown;
+  childDocument?: SelectorDocument;
 };
 
 export type ScalePlan = { percentX: number; percentY: number };
