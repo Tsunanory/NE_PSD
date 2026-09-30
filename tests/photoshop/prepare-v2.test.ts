@@ -78,6 +78,21 @@ describe('v2 read-only per-asset closure producer', () => {
     expect(await readFile(f.source, 'utf8')).toBe('psd-root');
   });
 
+  it('blocks when a scanner aborts its signal but returns a complete result', async () => {
+    const f = await fixture('основа.psd', Buffer.from('psd-root'));
+    const controller = new AbortController();
+    const scanner: AssetLinkScanner = {
+      readLinks: async () => {
+        controller.abort();
+        return { sourceSha256: sha('psd-root'), complete: true, links: [] };
+      },
+    };
+    const result = await prepareOwnedInputV2(f.request, scanner, controller.signal);
+    expect(code(result)).toBe('CANCELLED');
+    await expect(readFile(join(f.stagingDirectory, ASSET_CLOSURE_PROOF_V2_PATH))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(f.stagingDirectory, PREPARED_INPUT_MANIFEST_V2_PATH))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('blocks an unproven empty scan, unknown link, missing link and cycle without a proof file', async () => {
     const f = await fixture('основа.psd', Buffer.from('psd-root'));
     const broken: AssetLinkScanner[] = [

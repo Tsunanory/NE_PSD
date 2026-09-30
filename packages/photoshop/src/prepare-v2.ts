@@ -109,25 +109,33 @@ function blocked(request: PrepareRequestV2, cause: unknown): PreparedInputManife
  */
 export async function prepareOwnedInputV2(requestValue: PrepareRequestV2, scanner: AssetLinkScanner, signal: AbortSignal): Promise<PreparedInputManifestV2> {
   const request = PrepareRequestV2Schema.parse(requestValue);
+  const checkCancelled = () => { if (signal.aborted) throw new PrepareError('CANCELLED', 'preparation cancelled'); };
   try {
-    if (signal.aborted) throw new PrepareError('CANCELLED', 'preparation cancelled');
+    checkCancelled();
     const { root, identity: rootIdentity } = await sourceRootIdentity(request.sourceRoot.path);
+    checkCancelled();
     if (rootIdentity !== request.sourceRoot.identity) throw new PrepareError('SOURCE_ROOT_CHANGED', 'source root identity differs from A binding');
     await noSymlinkComponents(request.stagingDirectory);
+    checkCancelled();
     const stagingRoot = await realpath(request.stagingDirectory);
+    checkCancelled();
     if (!(await stat(stagingRoot)).isDirectory() || stagingRoot !== resolve(request.stagingDirectory)) throw new PrepareError('STAGING_ROOT_INVALID', 'staging root is not canonical');
+    checkCancelled();
     if (inside(root, stagingRoot) || inside(stagingRoot, root) || root === stagingRoot) throw new PrepareError('ROOT_OVERLAP', 'staging and source roots overlap');
     const sourcePath = await canonicalFile(root, resolve(root, ...request.asset.source.relativePath.split('/')));
+    checkCancelled();
     const observed = new Map<string, ObservedFile>();
     const visiting = new Set<string>();
     const edges: ObservedEdge[] = [];
     const visit = async (path: string): Promise<ObservedFile> => {
-      if (signal.aborted) throw new PrepareError('CANCELLED', 'preparation cancelled');
+      checkCancelled();
       const canonical = await canonicalFile(root, path);
+      checkCancelled();
       if (visiting.has(canonical)) throw new PrepareError('LINK_CYCLE', 'linked source cycle');
       const known = observed.get(canonical);
       if (known) return known;
       const measured = await bytesOf(canonical);
+      checkCancelled();
       const relativePath = relative(root, canonical).split(sep).join('/');
       const entry = { path: canonical, relativePath, ...measured, identity: hex(request.sourceRoot.rootId + '\0' + relativePath) };
       observed.set(canonical, entry);
@@ -135,29 +143,38 @@ export async function prepareOwnedInputV2(requestValue: PrepareRequestV2, scanne
       const extension = extname(canonical).toLowerCase();
       if (extension === '.png' || extension === '.jpg' || extension === '.jpeg') {
         await rasterLinkFree(canonical, extension === '.jpeg' ? '.jpg' : extension);
+        checkCancelled();
       } else if (extension === '.psd' || extension === '.psb') {
         let scan: AssetLinkScan;
         try { scan = await scanner.readLinks(canonical, signal); }
-        catch (error) { throw new PrepareError('LINK_SCAN_UNAVAILABLE', 'qualified asset link scan failed: ' + String(error)); }
+        catch (error) {
+          checkCancelled();
+          throw new PrepareError('LINK_SCAN_UNAVAILABLE', 'qualified asset link scan failed: ' + String(error));
+        }
+        checkCancelled();
         if (scan?.complete !== true || scan.sourceSha256 !== measured.sha256 || !Array.isArray(scan.links)) throw new PrepareError('LINK_SCAN_UNAVAILABLE', 'link scanner did not prove a complete scan of these bytes');
         for (const link of scan.links) {
           if (link.sourceKind === 'embedded') continue;
           if (link.sourceKind !== 'linked' || !link.path) throw new PrepareError('LINK_UNKNOWN', 'PSD/PSB has an unknown or missing linked source');
           const target = isAbsolute(link.path) ? link.path : resolve(dirname(canonical), link.path);
           const child = await visit(target);
+          checkCancelled();
           if (link.expectedSha256 && link.expectedSha256 !== child.sha256) throw new PrepareError('LINK_HASH_MISMATCH', 'linked source differs from scanner expectation');
           edges.push({ parent: entry.relativePath, child: child.relativePath, identity: child.identity });
         }
       } else throw new PrepareError('ASSET_TYPE_UNSUPPORTED', 'asset type needs a qualified link scanner or strict raster decoder');
       const after = await bytesOf(canonical);
+      checkCancelled();
       if (after.sha256 !== measured.sha256 || after.bytes !== measured.bytes) throw new PrepareError('SOURCE_CHANGED', 'source changed during link discovery');
       visiting.delete(canonical);
       return entry;
     };
     const source = await visit(sourcePath);
+    checkCancelled();
     if (source.sha256 !== request.asset.source.sha256 || source.bytes !== request.asset.sourceBytes) throw new PrepareError('SOURCE_CHANGED', 'selected asset bytes differ from request');
     for (const item of observed.values()) {
       const after = await bytesOf(item.path);
+      checkCancelled();
       if (after.sha256 !== item.sha256 || after.bytes !== item.bytes) throw new PrepareError('SOURCE_CHANGED', 'dependency changed during link discovery');
     }
     const dependencies = [...observed.values()].filter((item) => item.path !== source.path).sort((a, b) => a.relativePath.localeCompare(b.relativePath)).map((item) => ({
@@ -172,14 +189,18 @@ export async function prepareOwnedInputV2(requestValue: PrepareRequestV2, scanne
       dependencies, observedLinks: edges.sort((a, b) => (a.parent + a.child).localeCompare(b.parent + b.child)), closureComplete: true,
     };
     const proofBytes = Buffer.from(canonicalize(proofData));
+    checkCancelled();
     await writeObservedProof(stagingRoot, ASSET_CLOSURE_PROOF_V2_PATH, proofBytes);
+    checkCancelled();
     const manifest = PreparedInputManifestV2Schema.parse({
       ...base(request), status: 'prepared',
       source: { original: request.asset.source, bytes: source.bytes },
       dependencies, closureComplete: true,
       closureProof: { relativePath: ASSET_CLOSURE_PROOF_V2_PATH, sha256: hex(proofBytes) },
     });
+    checkCancelled();
     await writeObservedProof(stagingRoot, PREPARED_INPUT_MANIFEST_V2_PATH, Buffer.from(canonicalize(manifest)));
+    checkCancelled();
     return manifest;
-  } catch (cause) { return blocked(request, cause); }
+  } catch (cause) { return blocked(request, signal.aborted ? new PrepareError('CANCELLED', 'preparation cancelled') : cause); }
 }
