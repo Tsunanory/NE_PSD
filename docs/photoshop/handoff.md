@@ -17,7 +17,7 @@
 
 The current B worktree adds exclusive `evidenceDirectory/prepared/` retention for changed qualification copies. A complete link inventory is bound to the scanned source digest; linked closure members are copied and relinked or embedded through acknowledged operations. The retained master and closure are independently rehashed, selectors are resolved again against the retained master, and the retained bytes, closure and originals are checked after scratch cleanup. Existing destinations, unavailable or changed scans, unknown or escaping links, tampering and ambiguous mutations block qualification without overwriting evidence.
 
-Validation with pinned Node 22.23.2/npm 10.9.8: `npm run test:photoshop` passed **20 files / 229 tests**; `npm run build --workspace=@ne-psd/photoshop` passed; `git diff --check` passed. This is fake-backed evidence only. Photoshop, Windows, and fresh visual review remain blocked. The pending A shared validator/DAG changes remain unimported and are still required for integration.
+Validation with pinned Node 22.23.2/npm 10.9.8: `npm run test:photoshop` passed **20 files / 230 tests**, including cancellation during retained-selector reproving; `npm run build --workspace=@ne-psd/photoshop` passed; `git diff --check` passed. This is fake-backed evidence only. Photoshop, Windows, and fresh visual review remain blocked. The pending A shared validator/DAG changes remain unimported and are still required for integration.
 
 ## Independent QA mapping at fixed `e17abc1`
 

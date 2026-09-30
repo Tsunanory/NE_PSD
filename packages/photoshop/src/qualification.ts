@@ -374,23 +374,30 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       const originalAfter = await hashFile(request.workingTemplatePath); const closureUnchanged = (await Promise.all(copy.closure.map(async (entry) => (await hashFile(entry.originalPath)) === entry.sha256))).every(Boolean); const originalsVerified = await copy.verifyOriginals(); if (!originalsVerified || !closureUnchanged || originalAfter !== originalMaster) throw new QualificationError('SOURCE_MUTATED', 'master or linked source verification failed'); const sourcePath = await writeEvidence(request.evidenceDirectory, 'checks/source-integrity.json', { master: { path: request.workingTemplatePath, before: originalMaster, after: originalAfter }, closure: copy.closure }); evidencePaths.push(sourcePath); checks.push({ id: 'source-integrity', passed: true, evidencePath: sourcePath });
       if (!adapter.preparedLinks) throw new QualificationError('PREPARED_LINK_CAPABILITY_MISSING', 'byte-bound prepared-link inventory is required before retaining a candidate', 'capability');
       const retained = await retainPreparedCopy(request.evidenceDirectory, copy.path, preparedSha, adapter.preparedLinks);
+      checkpoint(signal);
       const retainedSha = await hashFile(retained.path);
+      checkpoint(signal);
       const retainedSelectors = await adapter.resolveSelectors({ workingTemplatePath: retained.path, inspection: request.inspection, proposal: request.proposal });
+      checkpoint(signal);
       if (!validSelectorProof(retainedSelectors, retainedSha, request.inspection, request.proposal) ||
           !same(retainedSelectors.targets, selectors.targets) || !same(retainedSelectors.variants, selectors.variants)) {
         throw new QualificationError('RETAINED_SELECTOR_PROVENANCE_INVALID', 'retained candidate selectors do not verify against its actual bytes');
       }
+      checkpoint(signal);
       await clean();
+      checkpoint(signal);
       await verifyRetainedCopy(request.evidenceDirectory, retained.path, retained.closure, retained.operation);
       if (await hashFile(retained.path) !== retainedSha || await hashFile(request.workingTemplatePath) !== originalMaster) {
         throw new QualificationError('PREPARED_RETAIN_MISMATCH', 'retained candidate or original changed during cleanup', 'ambiguousState');
       }
+      checkpoint(signal);
       const retainedRef = fileRef(retained.path, retainedSha, `${request.inspection.template.rootId}:qualification`);
       evidencePaths.push(retainedRef.relativePath);
       const canonicalEvidenceRoot = await realpath(request.evidenceDirectory);
       for (const entry of retained.closure.closure) evidencePaths.push(relative(canonicalEvidenceRoot, entry.copyPath).replaceAll('\\', '/'));
       const post = await adapter.snapshot('post'); evidencePaths.push(await writeEvidence(request.evidenceDirectory, 'snapshots/post.json', post)); checks.push({ id: 'cleanup', passed: true, evidencePath: 'snapshots/post.json' });
       for (const path of evidencePaths) if (pathEscape(path) || path.startsWith('/') || !(await canonicalExistingInside(request.evidenceDirectory, path))) throw new QualificationError('EVIDENCE_INCOMPLETE', `missing evidence ${path}`);
+      checkpoint(signal);
       const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, retainedRef, retainedSelectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
     } catch (cause) {
       let barrierFailure: unknown;

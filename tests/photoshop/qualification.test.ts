@@ -61,6 +61,22 @@ describe('qualification real evidence boundary', () => {
     await expect(readFile(join(scratch, 'template.psd'))).rejects.toThrow();
   });
 
+  it('blocks cancellation while reproving retained selectors before publication', async () => {
+    const fixture = await setup();
+    const controller = new AbortController();
+    let selectorCalls = 0;
+    fixture.adapter.resolveSelectors = async ({ workingTemplatePath }) => {
+      selectorCalls += 1;
+      if (selectorCalls === 2) controller.abort();
+      return { ...fixture.proof, preparedSha256: createHash('sha256').update(await readFile(workingTemplatePath)).digest('hex') };
+    };
+    const result = await qualify(request(fixture), options(fixture), controller.signal);
+    expect(result.status).toBe('blocked');
+    expect(result.candidate).toBeNull();
+    expect(result.errors[0]).toMatchObject({ code: 'CANCELLED', category: 'cancelled' });
+    expect(fixture.counters()).toMatchObject({ txCleanups: 1, copyCleanups: 1 });
+  });
+
   it('blocks a stale prepared destination rather than overwriting it', async () => {
     const fixture = await setup();
     await mkdir(join(fixture.evidence, 'prepared'));
