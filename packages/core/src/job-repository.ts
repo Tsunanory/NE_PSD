@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AssetStatus, DomainError, EvidenceBundleManifest, HumanVisualAttestationV1, JobEvent, JobSnapshot, JobSpec, RenderRequestV2, ReviewEvidence, VisualReviewRequest } from '@ne-psd/contracts';
-import { EvidenceBundleManifestSchema, HumanVisualAttestationV1Schema, JobEventSchema, JobSnapshotSchema, RelativePathSchema, RenderRequestV2Schema, ReviewDecisionSchema, ReviewEvidenceSchema, TemplateProfileSchema, VisualReviewRequestSchema, bundleDigest, sha256Json, validateJobSpec } from '@ne-psd/contracts';
+import { DomainErrorSchema, EvidenceBundleManifestSchema, HumanVisualAttestationV1Schema, JobEventSchema, JobSnapshotSchema, RelativePathSchema, RenderRequestV2Schema, ReviewDecisionSchema, ReviewEvidenceSchema, TemplateProfileSchema, VisualReviewRequestSchema, bundleDigest, sha256Json, validateJobSpec } from '@ne-psd/contracts';
 import type { ArtifactQaResult } from './artifact-qa.js';
 import { makeEvent, type EventKind } from './events.js';
 import { assertAssetTransition, assertSnapshotCounters } from './state-machine.js';
@@ -159,6 +159,17 @@ export class JobRepository {
     } catch { throw new Error('persisted event JSON is malformed or invalid'); }
   }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
+  failQueuedAsset(jobId: string, assetId: string, error: DomainError): void {
+    const parsed = DomainErrorSchema.parse(error);
+    this.db.transaction(() => {
+      const current = this.row(jobId, assetId);
+      if (current.status !== 'queued') throw new Error('only queued asset preparation can fail without an attempt');
+      this.db.prepare("UPDATE assets SET status='failed',error_json=? WHERE job_id=? AND asset_id=? AND status='queued'")
+        .run(JSON.stringify(parsed), jobId, assetId);
+      this.db.prepare('UPDATE jobs SET state=?,updated_at=? WHERE job_id=?')
+        .run(this.deriveJobState(jobId), new Date().toISOString(), jobId);
+    })();
+  }
   beginV2Attempt(jobId: string, assetId: string, attempt: 1 | 2, intent: V2AttemptIntent): void {
     if (!intent.installationId || !intent.operationId || !isAbsolute(intent.stagingDirectory) || !/^[a-f0-9]{64}$/.test(intent.sourceRootIdentity)) throw Object.assign(new Error('invalid v2 operation intent'), { code: 'INVALID_V2_INTENT' });
     this.db.transaction(() => {
