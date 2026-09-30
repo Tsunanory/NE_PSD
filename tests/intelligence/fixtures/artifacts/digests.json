@@ -1,0 +1,58 @@
+{
+  "reference.png": {
+    "bytes": 101,
+    "sha256": "6ac079fe12a4de8ff05f00072ccc12d147549af0bdb08a491e652122f888c2d6"
+  },
+  "correct.jpg": {
+    "bytes": 642,
+    "sha256": "e4c3f339816e335337e2d7f0a04fb1a0e4bfb5f8e424c4ce872892bffd53d48a"
+  },
+  "disguised.jpg": {
+    "bytes": 102,
+    "sha256": "2b88730e0538a4741dc32974862aad4f457d03af2d7ad169075c4a1daaefbcaa"
+  },
+  "transparent.png": {
+    "bytes": 95,
+    "sha256": "f0daeee8aeb4a0a84b95b94bc10e017d6a8ff669fc41e61db065290383dce3b8"
+  },
+  "blank.png": {
+    "bytes": 101,
+    "sha256": "6ac079fe12a4de8ff05f00072ccc12d147549af0bdb08a491e652122f888c2d6"
+  },
+  "flat.png": {
+    "bytes": 110,
+    "sha256": "343c7bbca647cb397a7f5e16403cd334af9b45c30685e5aeb0627f132abbda97"
+  },
+  "misplaced.png": {
+    "bytes": 108,
+    "sha256": "351cd5147dd9ea18090acc68eb663f52ca80bcd8ed20378cc1b4058abccb7bfa"
+  },
+  "background-changed.png": {
+    "bytes": 112,
+    "sha256": "6ddfcaa4a5f4d7e73fe8f041673e45604a58424fe751ff8bd2c08fca8948f5c8"
+  },
+  "variant-2.png": {
+    "bytes": 109,
+    "sha256": "e00b029dde612ea0b3c7ed2b9d50e70589757306943dffd197aec7868bc90cba"
+  },
+  "variant-3.png": {
+    "bytes": 110,
+    "sha256": "1522ef523a09ea925a4e046ad709927da88282b97743dcf4e5b3bde63224c1b3"
+  },
+  "wrong-width.png": {
+    "bytes": 104,
+    "sha256": "f0db1da0df3a660e88963a9f5ab1f82ced28a0182fd638e1b383e3d46c9a9a19"
+  },
+  "truncated.jpg": {
+    "bytes": 90,
+    "sha256": "b58148052f033ee73103565b8d42ff373cf17af59020c3918404ffc8514d8020"
+  },
+  "bomb.png": {
+    "bytes": 101,
+    "sha256": "16a20d28b92c46aa753c905d6a369e13405c572e09af221aeef8c6436b6936f2"
+  },
+  "empty.png": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-export type PromptId = 'planner' | 'runtime-reviewer' | 'diagnostic';
+export type PromptId = 'planner' | 'runtime-reviewer' | 'manual-reviewer' | 'diagnostic';
 const specs: Record<PromptId, { asset: string; sha256: string }> = {
   planner: { asset: 'planner-system.txt', sha256: '7526e222bc7df7ec0211f72f678e1f5dcaecf8344b68f88eeb565dc449726b63' },
   'runtime-reviewer': { asset: 'runtime-reviewer-system.txt', sha256: '5964f89bb5bfb776523ce0c012cd1063508b92b38ebbbf6cc677c7ded7bb132d' },
+  'manual-reviewer': { asset: 'manual-reviewer-system.txt', sha256: '6344b487d1232a482da288d00334e93224516602145d2e89e58311a38e28c8c1' },
   diagnostic: { asset: 'diagnostic-system.txt', sha256: '32fbacdb9c912137751b4c0c202a851fb24c4fa60e1dfb211d35bdaddb952285' },
 };
 const extract = (source: string) => { const start = source.indexOf('```text\n'); if (start < 0) throw new Error('PROMPT_BLOCK_MISSING'); const body = source.slice(start + 8); const end = body.indexOf('\n```'); if (end < 0) throw new Error('PROMPT_BLOCK_MISSING'); return body.slice(0, end) + '\n'; };
