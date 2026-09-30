@@ -1,89 +1,28 @@
-# B02 dependency handoff
+# Photoshop lane handoff — interim snapshot, 2026-09-30
 
-## A-owned dependency request
+**State:** `implemented-and-fake-tested` for the committed B protocol/adapter code below; **`blocked-external`** for real Photoshop and Windows qualification. This is an interim R9 preparation, not lane or product completion. It records no live Photoshop call, real PSD fit, visual verdict, Windows package result, or release qualification. The missing local live configuration is not proof that Photoshop is uninstalled. A production B/A composition is also unfinished implementation work.
 
-Current package state: `packages/photoshop/package.json` imports `@modelcontextprotocol/sdk` directly from `packages/photoshop/src/mcp-client.ts`, but the package manifest does not declare it. The current workspace resolves it only through the installed/hoisted dependency graph; this is not a valid direct dependency contract.
+## Current committed baseline
 
-Requested exact change by A: add direct dependency `@modelcontextprotocol/sdk` at version `1.30.0` to `packages/photoshop/package.json` and update the shared lockfile through the coordinated foundation process. B did not modify manifests or the lockfile.
+| Packet | Commit | Evidence and scope |
+|---|---|---|
+| B15-R1 trace producers/validator | `f8e4d7e` | [R1 evidence](b15-r1-evidence.md): actual producer snapshot bytes, ordered JSONL identities, backend rejection of missing/tampered paths; focused 40 passed and workspace check passed. |
+| B15-R2 isolation/recovery | `65a4090`, `6ea572b` | [R2 evidence](b15-r2-2026-09-30.md): copied closure byte checks, evidence containment, persisted-journal recovery and positive lock release; focused 72 passed and workspace check passed before its later correction. A further independent P1 correction is pending and not counted here. |
+| A-owned direct SDK dependency | `3c869a8` | `packages/photoshop/package.json` now declares exact `@modelcontextprotocol/sdk@1.30.0`; A coordinated the shared root lockfile. The old B02 unresolved-dependency paragraph is superseded. |
+| B15-R3 executable fake corpus | `e4a557b` | [R3 evidence](b15-r3-2026-09-30.md) and raw [focused](b15-r3-logs/focused.log), [full](b15-r3-logs/full.log), [check](b15-r3-logs/check.log) logs: 29 corpus rows, 3 focused tests, full Photoshop suite **191 passed**, workspace check passed. This result predates R4 and pending R5. |
+| B15-R4 live harness | `1085a0d`, correction `4afb53d` | [R4 evidence](b15-r4-2026-09-30.md), [acceptance sequence](live-acceptance.md): strict machine-only config, typed composition seam and six fit/format cases with 18 byte-checked artifacts in an injected test. Initial focused 7 passed; the correction's production-labeled fake reproduced a false `qualified` result, then focused **8 passed** and Photoshop workspace typecheck passed. Every composition now returns `protocol-exercised`, never live qualification. |
+| B16 Windows lexical unit packet | `c425b79` | [B16 evidence](b16-paths-2026-09-30.md): 3 Mac-executed `node:path.win32`/argv tests passed; actual Windows filesystem, path budget and packaged launch remain open. |
 
-Reason: the adapter uses the pinned SDK `Client` and `StdioClientTransport` exports directly. A direct declaration prevents install-layout-dependent builds and records the qualification pin.
+The common development runtime is Node `22.23.2`/npm `10.9.8` at `/Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/.toolchains/node-v22.23.2-darwin-arm64/bin`; A's [toolchain provenance](/Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/core/docs/qualification/toolchain-2026-09-30.md) applies only to macOS arm64 development. All counts above are from their named snapshots, not a fresh aggregate verification after every commit. Prior B12–B15 handoff counts and the old readiness-only B15 gate are historical; they do not establish the current live gate.
 
-Consumer impact: Photoshop adapter builds and runtime transport resolution become deterministic for clean workspace installs; root lockfile integrity remains A-owned. No public contracts change.
+## Contract and ownership boundary
 
-Migration/build test: after A applies the dependency request, run `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm ci`, `npm run check`, and `npm run test:photoshop`. The B02 unit suite must remain child-process-free.
+B alone owns the OS-visible lock for one Photoshop installation. The intended A integration removes A's separate installation lease; A's queue remains process-local admission only. Ambiguous save/export, unsettled transport, unreconciled owned documents, or failed journal persistence retain B's lock until explicit read-only positive reconciliation. A/B must use one reviewed request/evidence/recovery interface, without local casts or duplicate wire types. The [B integration request](integration-request-2026-09-30.md) remains a **proposal**, not an accepted v2 implementation. A's v2 schema/adapter commit SHA and final root/operation identity binding are pending; R5 cannot be claimed complete before B adopts and verifies that fixed baseline. The complete verified per-asset linked dependency inventory and owned-input handoff still need a reviewed producer boundary. B does not alter A's shared contracts, root manifests or lockfile.
 
-B02 inherited blocker: Windows launch-path whitespace rejection remains governed by the existing pinned-launch validation. No correction is claimed here.
-## B12 transaction orchestration
+## Gates still open
 
-Status: implemented-and-fake-tested.
+- **Implementation:** finish R2's pending P1 correction; adopt the fixed A v2 schema/fixtures and operation/owned-source/recovery identity; wire B's producer and live `LiveComposition` through real B inspection/qualification, A sealing, and v2 rendering. Re-run the full suite and checks after those commits. The current R4 injected test does not stand in for this wiring.
+- **Live primary/alternate:** obtain an approved machine config, actual Photoshop installation and version, source PSD with all linked dependencies, sample asset and permitted roots. Record `tools/list`/source/license digests, ID-safe routes, real effective bounds, prepared copy and sentinel propagation, all fit/export modes, decoded color/alpha/quality, original hashes, user-document preservation, cleanup and lock recovery. Missing primitives yield a named capability block. The [tool](tool-qualification.md) and [template](template-qualification.md) records distinguish historical package/static/fake evidence from observed live behavior.
+- **Windows/integration/reviewer:** exercise the fixed canonical path API on Windows 11 x64, packaged offline MCP/runtime, actual PSD/export corpus, crash/save/export/cancel/restart recovery, performance and clean installer behavior. A/C/D integration must provide the requested fresh image review for each of three outputs before publication. No text-only or Mac unit result qualifies those gates.
 
-Commit: `be5f0c3` (`fix(photoshop): recover ambiguous operations without replay`).
-
-The backend transaction boundary is `packages/photoshop/src/backend.ts`, exported from the package entry point. It validates the sealed profile and runtime tool binding, holds one installation lock for the complete asset, creates a fresh adapter-owned working session, opens and verifies the graph, deduplicates proven content resources, performs placement/fit/clipping through the session, verifies propagation and source hashes, exports exactly three variants through B11, writes relative evidence, discards owned documents, and returns `RenderEvidence`. Qualification is delegated directly to B10's qualifier with the same adapter lock; B12 does not seal candidates or retry mutations.
-
-Verification before handoff:
-
-- `npm run test:photoshop -- tests/photoshop/backend.test.ts`: 2 passed.
-- `npm run test:photoshop`: 133 passed, 1 inherited B04 selector failure (`SELECTOR_DOCUMENT_ROUTE_MISMATCH` expected, `SELECTOR_MISSING` received in `tests/photoshop/selectors.test.ts:89`). B12 does not modify B04.
-- `npm run check`: passed for all workspaces.
-- `git diff --check`: passed.
-
-Limitations: live Photoshop adapter wiring, Windows qualification, and source/dependency hash implementation remain adapter/integration gates. JPEG rendering requires the qualified session to provide an explicit background policy. No live Photoshop or Windows evidence is claimed.
-
-## B12 correction retry
-
-The B12 correction adds runtime validation for typed `acknowledged` lifecycle proofs, requires unchanged master/dependency proofs and quiescent discard proofs, preserves the recovery barrier for ambiguous mutations, normalizes thrown failures with `code`, `category`, `retryable`, and `evidencePaths`, and makes staging evidence writes canonical/symlink-safe. Recovery evidence is resolved against the adapter's trusted `recoveryRoot`; it never uses `process.cwd()`.
-
-Required fake coverage now includes malformed lifecycle acknowledgements, unsealed profiles, ambiguous mutation preservation without discard, existing trace retention, source/dependency bytes, referenced evidence files, and strict two-asset discard ordering. The inherited B04 selector failure remains unchanged.
-
-## B05 known blocker
-
-## B13 timeout and recovery handoff
-
-Status: implemented-and-fake-tested.
-
-The recovery boundary is `packages/photoshop/src/recovery.ts`. `OperationJournal` appends an issued record before dispatch and a terminal record after acknowledgement, failure, or explicit reconciliation. `runUncertainOperation` dispatches each operation once, applies fixed failure-detection ceilings (metadata reads 15 seconds; open/place/replace 120 seconds; save/export 180 seconds), never aborts the underlying Photoshop call on caller timeout, and converts post-dispatch timeout, cancellation, transport loss, and process loss into non-retryable `ambiguousState` errors. The local MCP barrier rejects further calls until explicit idle/document/hash reconciliation. `SessionLock` retains its OS-visible lock while the barrier is set and exposes retained-owner recovery; successful reconciliation releases it. `PhotoshopBackend.recover` runs inside that retained owner when available.
-
-Verification:
-
-- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run test:photoshop -- tests/photoshop/recovery.test.ts`: 13 passed.
-- Focused B13 regression set (`recovery`, `mcp-client`, `session-lock`, `backend`): 39 passed.
-- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run check`: passed.
-- Full `npm run test:photoshop`: 149 passed, 1 inherited B04 selector failure at `tests/photoshop/selectors.test.ts:89` (`SELECTOR_DOCUMENT_ROUTE_MISMATCH` expected, `SELECTOR_MISSING` received). B13 does not modify B04.
-- `git diff --check`: passed.
-
-Limitations: live Photoshop acknowledgement, idle/status primitive, process-death reconciliation, and Windows qualification remain untested. Recovery never replays a mutation or re-exports an ambiguous filename; operator reconciliation or a new attempt is required after an unresolved barrier. Source/master/dependency preservation remains enforced by B12's transaction boundary and is not weakened by B13.
-
-## B13 correction retry
-
-The correction adds unresolved-transport tracking through timeout and late-reply settlement, dynamic operation-specific journal binding after lock acquisition, crash-durable hash-chained journal validation, explicit stale-owner adoption, persisted identity/ownership/path/depth checks, and typed timeout-safe recovery. Backend recovery now clears and releases only after safe proof; failed or ambiguous recovery marks and retains the barrier. Unknown journal-terminal write failures fail closed. The observer checkpoint is recorded in `skill-observations/checkpoints.log`.
-
-Correction commit: `a61c0c5` (`fix(photoshop): close B13 recovery race conditions`). Correction verification: focused recovery/session/backend/MCP tests: 46 passed; workspace checks passed. Full Photoshop suite: 156 passed, 1 inherited B04 selector failure at `tests/photoshop/selectors.test.ts:89`; `git diff --check` passed. Live Photoshop, Windows, and process-death qualification remain untested.
-
-B04's same-name/kind sibling ambiguity check compares structural equivalence against `typed[0]`. If the selected duplicate is not the first typed candidate, an identical sibling can be missed. B05 does not change B04 after its retry cap; B14/integration must resolve this under its authorized scope.
-
-## B14 conformance and integration repair
-
-Status: implemented-and-fake-tested.
-
-The B14 corpus is `tests/photoshop/fixtures/conformance-cases.json`, exercised by `tests/photoshop/conformance.test.ts`. It contains the complete cover/contain/stretch × portrait/landscape/square × JPEG/PNG matrix, source metadata extremes, non-origin geometry, transparency, vector-mask holes, zero/unknown bounds, shared/independent targets, duplicate names, linked dependencies, Cyrillic and whitespace names, core-owned Windows reserved/case-only names, corrupt input, color/schema faults, and mutation lost-reply rows. Asset identity is always `assetId`; source basenames are not used as identity.
-
-Integration repairs include whitespace-safe pinned argv launch, selected-candidate structural selector ambiguity, complete nested inspection routes, copied linked-target byte rehashing, prepared-copy pre/post byte proof, cancellation-independent qualification cleanup, selector cross-candidate shape checks, strict journal fields/metadata and identity-keyed journal caches, timeout-before-dispatch latching, persisted-journal recovery inventory/postconditions, full lock identity release and atomic stale adoption, trusted recovery evidence roots, authoritative discard before backend evidence writes, and recovery barriers for ambiguous export acknowledgements.
-
-Verification from this B14 packet:
-
-- `PATH=/private/tmp/node-v22.23.2-darwin-arm64/bin:$PATH npm run test:photoshop -- tests/photoshop/conformance.test.ts`: 4 passed.
-- Focused selector/isolation/inspection/recovery regressions: 46 passed.
-- Live Photoshop, Windows, source-image appearance, process-death and real-memory gates remain untested. Fake success is not live qualification.
-
-## B14 correction retry
-
-Correction scope: barrier persistence failures now propagate fail-closed; copied linked resources are independently byte-hashed; selector proofs require exact candidate fingerprints and unique target IDs; qualification evidence uses component-wise symlink-safe writes; backend qualification preserves typed domain fields; fabricated render traces are rejected; recovery always re-inventories owned documents and verifies journal reconciliation; journal operations, reasons, identities, sequence starts, and malformed JSON are validated; session release/adoption uses a serialized atomic transition; pinned launch parameters are validated at transport construction; sentinel exports enforce the qualified output policy.
-
-Correction verification: workspace typecheck passed; focused MCP, recovery, session-lock, backend, and working-copy tests passed after adding the barrier-failure regression and updating trace/copy fixtures; `git diff --check` passed. One legacy qualification assertion still expects prepared selector fingerprints to change, which conflicts with the corrected exact-fingerprint contract and must be updated in the next test-maintenance packet. Live Photoshop, Windows, process-death, and real-memory evidence remain untested.
-
-## B15 live qualification gate
-
-The explicit gate is `tests/photoshop/live.test.ts`, controlled only by the untracked `docs/photoshop/live-machine.json`. With that file absent, it performs no Photoshop or MCP calls and reports `B15_LIVE_BLOCKED`. When present, it validates the selected installation, executable MCP entry, pinned Node, source PSD and approved work/evidence roots without opening or mutating user documents. The required isolated inspection, effective-bounds, sentinel-correspondence, all-fit, three-variant export, cleanup and original-hash sequence is recorded in `docs/photoshop/live-acceptance.md`.
-
-Current live status: `blocked-external`. `docs/qualification/runtime-lock.json` records no Photoshop installation on this host and no Windows 11 x64 host is available. No real template, tool schema, image appearance, alternate backend, process-death or Windows result is claimed. The pinned primary package/license evidence is recorded in `docs/photoshop/tool-qualification.md`; no Joonas or generated scripting fallback is selected.
+No original PSD, asset or linked source was intentionally edited by the committed packets. The project must verify this again with real source/dependency hashes during live qualification.
