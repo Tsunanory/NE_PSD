@@ -1,11 +1,15 @@
-export type LeaseDiagnostics = { host: string; pid: number; processStart: string; jobId: string; operation?: string };
-export type PhotoshopLease = { acquire(jobId: string, diagnostics?: LeaseDiagnostics): Promise<void>; diagnostics(): Promise<LeaseDiagnostics>; release(): Promise<void>; retain(): Promise<void>; safeToRelease?: () => Promise<boolean> };
-
 export class BackendSerialization {
-  private static readonly byLease = new WeakMap<object, BackendSerialization>();
+  private static readonly byInstallation = new Map<string, BackendSerialization>();
   private busy = false;
   private blocked = false;
-  static forLease(lease: object): BackendSerialization { const existing = this.byLease.get(lease); if (existing) return existing; const created = new BackendSerialization(); this.byLease.set(lease, created); return created; }
+  static forInstallation(installationId: string): BackendSerialization {
+    if (!installationId) throw new Error('trusted installation identity required');
+    const existing = this.byInstallation.get(installationId);
+    if (existing) return existing;
+    const created = new BackendSerialization();
+    this.byInstallation.set(installationId, created);
+    return created;
+  }
   block(): void { this.blocked = true; }
   clearBlocked(): void { this.blocked = false; }
   isBlocked(): boolean { return this.blocked; }
@@ -13,6 +17,12 @@ export class BackendSerialization {
     if (this.blocked) throw Object.assign(new Error('Photoshop mutation is blocked pending positive recovery'), { code: 'MUTATION_BLOCKED' });
     if (this.busy) throw Object.assign(new Error('Photoshop mutation already in progress'), { code: 'MUTATION_IN_PROGRESS' });
     this.busy = true;
+    try { return await operation(); } finally { this.busy = false; }
+  }
+  async runRecovery<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.busy) throw Object.assign(new Error('Photoshop operation already in progress'), { code: 'MUTATION_IN_PROGRESS' });
+    this.busy = true;
+    this.blocked = true;
     try { return await operation(); } finally { this.busy = false; }
   }
 }

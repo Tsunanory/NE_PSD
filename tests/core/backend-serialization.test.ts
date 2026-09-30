@@ -12,9 +12,8 @@ describe('backend serialization', () => {
   });
 
   it('shares the ambiguity latch across workers using one installation lease', async () => {
-    const lease = {};
-    const workerA = BackendSerialization.forLease(lease);
-    const workerB = BackendSerialization.forLease(lease);
+    const workerA = BackendSerialization.forInstallation('backend-serialization-test');
+    const workerB = BackendSerialization.forInstallation('backend-serialization-test');
     workerA.block();
     await expect(workerB.run(async () => undefined)).rejects.toMatchObject({ code: 'MUTATION_BLOCKED' });
     workerB.clearBlocked();

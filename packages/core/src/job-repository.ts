@@ -16,13 +16,17 @@ const MIGRATIONS = [
   { version: 2, sql: readFileSync(join(migrationDirectory, '002-attempt-foreign-keys.sql'), 'utf8') },
   { version: 3, sql: readFileSync(join(migrationDirectory, '003-qualified-profile.sql'), 'utf8') },
   { version: 4, sql: readFileSync(join(migrationDirectory, '004-job-output-root.sql'), 'utf8') },
+  { version: 5, sql: readFileSync(join(migrationDirectory, '005-v2-attempt-intent.sql'), 'utf8') },
 ];
 
 export type ReviewRecord = { reviewId: string; jobId: string; assetId: string; attempt: number; payload: unknown };
 export type PublicationRecord = { publicationId: string; jobId: string; assetId: string; attempt: number; transactionKey: string; path: string; manifest?: unknown };
 export type QualificationRecord = { qualificationId: string; profileId: string; profileSha256: string; evidence: unknown; profile: unknown };
 export type OutputRootBinding = { rootId: string; canonicalRoot: string; canonicalRootIdentity: string };
-function filesystemIdentity(path: string): string { const info = statSync(path); return createHash('sha256').update(`${path}|${info.dev}|${info.ino}`).digest('hex'); }
+export type V2AttemptIntent = { installationId: string; operationId: string; stagingDirectory: string; sourceRootIdentity: string };
+export type PendingMutation = { schemaVersion: 1 | 2; jobId: string; assetId: string; attempt: number; operationId: string | null; stagingDirectory: string | null; sourceRootIdentity: string | null };
+export type PublicationIntent = { jobId: string; assetId: string; attempt: 1 | 2; transactionKey: string; outputRootPath: string; outputRootIdentity: string; stagingDirectory: string; destinationPath: string; manifestSha256: string; reviewId: string; decisionSha256: string; reviewPolicySha256: string; modelProvenanceSha256: string; state: 'prepared' | 'renamed' | 'committed' | 'quarantined' };
+export function filesystemIdentity(path: string): string { const info = statSync(path); return createHash('sha256').update(`${path}|${info.dev}|${info.ino}`).digest('hex'); }
 function realpathWithExistingAncestor(path: string): string {
   try { return realpathSync(path); } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -149,6 +153,32 @@ export class JobRepository {
     } catch { throw new Error('persisted event JSON is malformed or invalid'); }
   }
   attempts(jobId: string, assetId: string): unknown[] { return this.db.prepare('SELECT * FROM attempts WHERE job_id=? AND asset_id=? ORDER BY attempt').all(jobId, assetId) as unknown[]; }
+  beginV2Attempt(jobId: string, assetId: string, attempt: 1 | 2, intent: V2AttemptIntent): void {
+    if (!intent.installationId || !intent.operationId || !isAbsolute(intent.stagingDirectory) || !/^[a-f0-9]{64}$/.test(intent.sourceRootIdentity)) throw Object.assign(new Error('invalid v2 operation intent'), { code: 'INVALID_V2_INTENT' });
+    this.db.transaction(() => {
+      const current = this.row(jobId, assetId);
+      if (current.status !== 'queued' || current.attempt + 1 !== attempt || this.pendingMutations(intent.installationId).length > 0) throw Object.assign(new Error('unresolved mutation or invalid attempt state'), { code: 'MUTATION_BLOCKED' });
+      this.transition(jobId, assetId, 'rendering');
+      this.db.prepare('UPDATE attempts SET v2_installation_id=?,v2_operation_id=?,v2_staging_directory=?,v2_source_root_identity=?,v2_state=? WHERE job_id=? AND asset_id=? AND attempt=?').run(intent.installationId, intent.operationId, intent.stagingDirectory, intent.sourceRootIdentity, 'intent', jobId, assetId, attempt);
+    })();
+  }
+  pendingMutations(installationId: string): PendingMutation[] {
+    if (!installationId) throw new Error('installation identity required');
+    return this.db.prepare(`SELECT CASE WHEN t.v2_operation_id IS NULL THEN 1 ELSE 2 END AS schemaVersion,
+      t.job_id AS jobId,t.asset_id AS assetId,t.attempt,t.v2_operation_id AS operationId,
+      t.v2_staging_directory AS stagingDirectory,t.v2_source_root_identity AS sourceRootIdentity
+      FROM attempts t JOIN assets a ON a.job_id=t.job_id AND a.asset_id=t.asset_id
+      WHERE (t.v2_operation_id IS NOT NULL AND t.v2_installation_id=? AND t.v2_state!='safe')
+         OR (t.v2_operation_id IS NULL AND a.attempt=t.attempt AND a.status='rendering')
+      ORDER BY t.created_at,t.job_id,t.asset_id,t.attempt`).all(installationId) as PendingMutation[];
+  }
+  markV2Dispatched(jobId: string, assetId: string, attempt: number, operationId: string): void { this.changeV2State(jobId, assetId, attempt, operationId, 'dispatched'); }
+  markV2Ambiguous(jobId: string, assetId: string, attempt: number, operationId: string): void { this.changeV2State(jobId, assetId, attempt, operationId, 'ambiguous'); }
+  markV2Safe(jobId: string, assetId: string, attempt: number, operationId: string): void { this.changeV2State(jobId, assetId, attempt, operationId, 'safe'); }
+  private changeV2State(jobId: string, assetId: string, attempt: number, operationId: string, state: 'dispatched' | 'ambiguous' | 'safe'): void {
+    const result = this.db.prepare('UPDATE attempts SET v2_state=? WHERE job_id=? AND asset_id=? AND attempt=? AND v2_operation_id=? AND v2_state!=?').run(state, jobId, assetId, attempt, operationId, 'safe');
+    if (result.changes !== 1) throw Object.assign(new Error('v2 operation identity or state mismatch'), { code: 'V2_OPERATION_MISMATCH' });
+  }
   recordReview(record: ReviewRecord): void { this.db.transaction(() => { this.assertAttemptState(record.jobId, record.assetId, record.attempt, 'reviewing', 'reviewing'); this.db.prepare('INSERT INTO reviews(review_id,job_id,asset_id,attempt,review_json,created_at) VALUES(?,?,?,?,?,?)').run(record.reviewId, record.jobId, record.assetId, record.attempt, JSON.stringify(record.payload), new Date().toISOString()); })(); }
   recordPublication(record: PublicationRecord): void {
     this.db.transaction(() => {
