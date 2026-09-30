@@ -1,0 +1,8 @@
+import { z } from 'zod';
+import { DomainErrorSchema, Sha256Schema } from '@ne-psd/contracts';
+export const ACTION_CODES = ['WAIT_FOR_REQUIRED_EVIDENCE', 'OPERATOR_RECOVERY_REQUIRED', 'REQUALIFY_TEMPLATE', 'REQUALIFY_BACKEND', 'REQUALIFY_MODEL', 'CORRECT_CONFIGURATION', 'RETRY_FRESH_COPY', 'TERMINAL_FAILURE'] as const;
+export const DiagnosticRequestSchema = z.object({ schemaVersion: z.literal(1), kind: z.literal('diagnostic'), requestId: z.string().min(1), sessionId: z.string().min(1), promptSha256: Sha256Schema, subjectId: z.string().min(1), evidenceSha256: Sha256Schema, evidenceRefs: z.array(z.string().min(1)), attempt: z.union([z.literal(1), z.literal(2)]), domainError: DomainErrorSchema, allowedActions: z.array(z.string()).min(1) }).strict();
+export const DiagnosticResultSchema = z.object({ schemaVersion: z.literal(1), requestId: z.string().min(1), sessionId: z.string().min(1), promptSha256: Sha256Schema, subjectId: z.string().min(1), evidenceSha256: Sha256Schema, status: z.enum(['diagnosed', 'blocked']), observations: z.array(z.string()), unknowns: z.array(z.string()), cause: z.object({ code: z.string(), summary: z.string(), evidenceRefs: z.array(z.string()) }).strict().nullable(), actionCode: z.enum(ACTION_CODES), actionReason: z.string(), evidenceRefs: z.array(z.string()) }).strict();
+export type DiagnosticRequest = z.infer<typeof DiagnosticRequestSchema>; export type DiagnosticResult = z.infer<typeof DiagnosticResultSchema>;
+export type ActionCode = typeof ACTION_CODES[number];
+export const DIAGNOSTIC_RESULT_SCHEMA = z.toJSONSchema(DiagnosticResultSchema, { target: 'draft-2020-12' });

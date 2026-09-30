@@ -1,0 +1,16 @@
+export class StrictJsonError extends Error { readonly code: string; constructor(code: string, message: string) { super(message); this.name = 'StrictJsonError'; this.code = code; } }
+const duplicateKeys = (source: string) => {
+  let i = 0;
+  const ws = () => { while (/\s/.test(source[i] ?? '')) i++; };
+  const string = () => { const start = i++; let escaped = false; while (i < source.length) { const c = source[i++]; if (escaped) escaped = false; else if (c === '\\') escaped = true; else if (c === '"') { try { return JSON.parse(source.slice(start, i)) as string; } catch { throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'invalid JSON string escape'); } } } throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'invalid JSON unterminated string'); };
+  const value = (): boolean => { ws(); const c = source[i];
+    if (c === '{') { i++; ws(); const keys = new Set<string>(); if (source[i] === '}') { i++; return false; } while (i < source.length) { ws(); if (source[i] !== '"') throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'object key required'); const key = string(); if (keys.has(key)) return true; keys.add(key); ws(); if (source[i++] !== ':') throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'colon required'); if (value()) return true; ws(); if (source[i] === '}') { i++; return false; } if (source[i++] !== ',') throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'comma required'); } }
+    else if (c === '[') { i++; ws(); if (source[i] === ']') { i++; return false; } while (i < source.length) { if (value()) return true; ws(); if (source[i] === ']') { i++; return false; } if (source[i++] !== ',') throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', 'comma required'); } }
+    else if (c === '"') string(); else while (i < source.length && !',]}\s'.includes(source[i] ?? '')) i++;
+    return false;
+  };
+  return value();
+};
+export const parseStrictJsonValue = (raw: Uint8Array, maxBytes = 256 * 1024): unknown => { if (raw.byteLength > maxBytes) throw new StrictJsonError('MODEL_RESPONSE_TOO_LARGE', 'response exceeds byte limit'); let text: string; try { text = new TextDecoder('utf-8', { fatal: true }).decode(raw); } catch { throw new StrictJsonError('MODEL_RESPONSE_INVALID_UTF8', 'response is not valid UTF-8'); } return parseStrictJson(text, maxBytes); };
+export const parseStrictJson = (raw: string, maxBytes = 256 * 1024): unknown => { const bytes = new TextEncoder().encode(raw); if (bytes.byteLength > maxBytes) throw new StrictJsonError('MODEL_RESPONSE_TOO_LARGE', 'response exceeds byte limit'); const text = raw.trim(); if (!text || (!text.startsWith('{') && !text.startsWith('[')) || (!text.endsWith('}') && !text.endsWith(']'))) throw new StrictJsonError('MODEL_RESPONSE_NOT_EXACT_JSON', 'response must be exactly one JSON value'); if (duplicateKeys(text)) throw new StrictJsonError('MODEL_RESPONSE_DUPLICATE_KEY', 'duplicate JSON key'); try { return JSON.parse(text); } catch (error) { throw new StrictJsonError('MODEL_RESPONSE_INVALID_JSON', String(error)); } };
+export const parseAndValidateStrictJson = <T>(raw: Uint8Array, validate: (value: unknown) => T, maxBytes = 256 * 1024): T => { const value = parseStrictJsonValue(raw, maxBytes); try { return validate(value); } catch (error) { throw new StrictJsonError('MODEL_RESPONSE_SCHEMA_INVALID', String(error)); } };

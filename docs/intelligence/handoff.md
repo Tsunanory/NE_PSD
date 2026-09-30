@@ -1,0 +1,3 @@
+# Intelligence lane handoff — in progress
+
+C1/C2 were historically accepted. C3 closure is in progress; this file is not final acceptance evidence. A-owned dependency and contract changes are tracked in [task-3-dependency-request.md](task-3-dependency-request.md): direct Zod 4.6.5 pin adopted; complete known output on blocked proposals; Sharp 0.35.4 decoder coordination; persisted attempt reader and attestation/seal/publication contract for C4. C does not modify those shared files. C3 implementation evidence and exact remaining gates will be recorded in [task-3-evidence.md](task-3-evidence.md).

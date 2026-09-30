@@ -14,6 +14,11 @@ describe('mandatory review policy', () => {
     ]);
   });
 
+  it('does not expose mutable mandatory requirement entries', () => {
+    expect(Object.isFrozen(MANDATORY_REQUIREMENTS)).toBe(true);
+    expect(Object.isFrozen(MANDATORY_REQUIREMENTS[0])).toBe(true);
+  });
+
   it('hashes the policy using foundation canonicalization without self-reference', () => {
     const policy = createReviewPolicy();
     expect(policy.policySha256).toMatch(/^[a-f0-9]{64}$/);

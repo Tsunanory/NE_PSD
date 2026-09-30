@@ -1,0 +1,1655 @@
+[
+  {
+    "name": "unambiguous-qualified-graph",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-qualified",
+      "evidenceStatus": "liveObserved",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": {
+        "backendId": "alisaitteke",
+        "version": "1",
+        "sourceCommit": "commit",
+        "supportedFitModes": [
+          "contain",
+          "cover"
+        ],
+        "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "platform": "darwin",
+        "photoshopVersion": "25",
+        "evidencePaths": [
+          "capabilities.json"
+        ]
+      },
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        },
+        {
+          "documentKey": "child",
+          "parentKey": "root",
+          "viaLayer": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "embedded",
+                "kind": "smartObject",
+                "fingerprint": "embedded"
+              }
+            ]
+          },
+          "sourceKind": "embedded",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "child",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "target"
+              }
+            ]
+          },
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 10,
+            "bottom": 10
+          },
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "child",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "reference"
+              }
+            ]
+          },
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 10,
+            "bottom": 10
+          },
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "input",
+          "documentKey": "child",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "input",
+                "kind": "pixel",
+                "fingerprint": "input"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "input"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-qualified",
+      "status": "proposed",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": "input"
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": {
+        "format": "png",
+        "quality": 100,
+        "colorSpace": "sRGB",
+        "width": 100,
+        "height": 100
+      },
+      "missingFields": [],
+      "facts": [
+        {
+          "claim": "observed",
+          "evidenceRefs": [
+            "inspect.json"
+          ]
+        }
+      ],
+      "explanation": "qualified"
+    },
+    "expected": {
+      "status": "proposed",
+      "fitMode": "contain",
+      "variantIds": [
+        "1",
+        "2",
+        "3"
+      ]
+    }
+  },
+  {
+    "name": "duplicate-names-under-different-parents",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-duplicate-parents",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        },
+        {
+          "documentKey": "a",
+          "parentKey": "root",
+          "viaLayer": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "a",
+                "kind": "smartObject",
+                "fingerprint": "a"
+              }
+            ]
+          },
+          "sourceKind": "embedded",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        },
+        {
+          "documentKey": "b",
+          "parentKey": "root",
+          "viaLayer": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "b",
+                "kind": "smartObject",
+                "fingerprint": "b"
+              }
+            ]
+          },
+          "sourceKind": "embedded",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target-a",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "ta"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "ref-a",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "Прямоугольник 3",
+                "kind": "shape",
+                "fingerprint": "ra"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "target-b",
+          "documentKey": "b",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "tb"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "ref-b",
+          "documentKey": "b",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "Прямоугольник 3",
+                "kind": "pixel",
+                "fingerprint": "rb"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-duplicate-parents",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target-a",
+          "referenceCandidateId": "ref-a",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "capabilities.supportedFitModes"
+      ],
+      "facts": [],
+      "explanation": "duplicate names require disambiguation"
+    },
+    "expected": {
+      "status": "blocked",
+      "missingFields": [
+        "capabilities.supportedFitModes"
+      ]
+    }
+  },
+  {
+    "name": "identical-dimensions-without-graph-edge",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-no-edge",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "a",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        },
+        {
+          "documentKey": "b",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "t"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "b",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "r"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "a",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-no-edge",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "candidates[0].documentKey"
+      ],
+      "facts": [],
+      "explanation": "no graph edge"
+    },
+    "expected": {
+      "status": "blocked",
+      "errorCode": "PROPOSAL_UNSUPPORTED_LINEAGE"
+    }
+  },
+  {
+    "name": "stale-ids-after-reopen",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-stale",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "new-target",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "new"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "new-ref",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "ref"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-stale",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "old-target",
+          "referenceCandidateId": "new-ref",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "candidates[0].candidateId"
+      ],
+      "facts": [],
+      "explanation": "stale IDs"
+    },
+    "expected": {
+      "status": "blocked",
+      "errorCode": "PROPOSAL_UNKNOWN_CANDIDATE"
+    }
+  },
+  {
+    "name": "duplicate-rectangle-3",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-rectangles",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "t"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "rect-a",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "Прямоугольник 3",
+                "kind": "shape",
+                "fingerprint": "a"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "rect-b",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "Прямоугольник 3",
+                "kind": "shape",
+                "fingerprint": "b"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-rectangles",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "rect-a",
+          "inputCandidateId": null
+        },
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "rect-b",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "candidates[0].selector"
+      ],
+      "facts": [],
+      "explanation": "duplicate display names"
+    },
+    "expected": {
+      "status": "blocked",
+      "errorCode": "PROPOSAL_MAPPING_AMBIGUOUS"
+    }
+  },
+  {
+    "name": "missing-output-dimensions",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-output",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "t"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "r"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-output",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "output.width",
+        "output.height"
+      ],
+      "facts": [],
+      "explanation": "output dimensions missing"
+    },
+    "expected": {
+      "status": "blocked",
+      "missingFields": [
+        "output.width",
+        "output.height"
+      ]
+    }
+  },
+  {
+    "name": "unknown-linked-isolation",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-linked",
+      "evidenceStatus": "staticCandidate",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": null,
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        },
+        {
+          "documentKey": "linked",
+          "parentKey": "root",
+          "viaLayer": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "linked",
+                "kind": "smartObject",
+                "fingerprint": "l"
+              }
+            ]
+          },
+          "sourceKind": "linked",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "linked",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "t"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "linked",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "r"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [
+        "linked.psd"
+      ],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-linked",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "qualification.linkedIsolation"
+      ],
+      "facts": [],
+      "explanation": "linked isolation unknown"
+    },
+    "expected": {
+      "status": "blocked",
+      "missingFields": [
+        "qualification.linkedIsolation"
+      ]
+    }
+  },
+  {
+    "name": "missing-backend-fit-capability",
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-capability",
+      "evidenceStatus": "liveObserved",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": {
+        "backendId": "alisaitteke",
+        "version": "1",
+        "sourceCommit": "commit",
+        "supportedFitModes": [
+          "cover"
+        ],
+        "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "platform": "darwin",
+        "photoshopVersion": "25",
+        "evidencePaths": [
+          "capabilities.json"
+        ]
+      },
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 100,
+          "height": 100,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "t"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "r"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v1",
+                "kind": "group",
+                "fingerprint": "v1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v2",
+                "kind": "group",
+                "fingerprint": "v2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "v3",
+                "kind": "group",
+                "fingerprint": "v3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspect.json"
+      ]
+    },
+    "proposal": {
+      "schemaVersion": 1,
+      "inspectionId": "fx-capability",
+      "status": "blocked",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": null,
+      "missingFields": [
+        "capabilities.supportedFitModes"
+      ],
+      "facts": [],
+      "explanation": "fit mode capability missing"
+    },
+    "expected": {
+      "status": "blocked",
+      "missingFields": [
+        "capabilities.supportedFitModes"
+      ]
+    }
+  }
+]
