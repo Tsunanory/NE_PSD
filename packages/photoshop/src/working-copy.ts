@@ -206,7 +206,7 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     selectedCanonical = preparedCanonical;
   }
 
-  const attemptRoot = paths.canonical ? await Promise.resolve(paths.canonical(options.attemptRoot)).catch(() => options.attemptRoot) : options.attemptRoot;
+  let attemptRoot = options.attemptRoot;
   try {
     await fileSystem.mkdir(paths.dirname(attemptRoot), { recursive: true });
     await fileSystem.mkdir(attemptRoot, { recursive: false });
@@ -226,6 +226,10 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
 
   let mutationPending = false;
   try {
+    const canonicalParent = await paths.canonical(paths.dirname(attemptRoot));
+    const createdCanonical = await paths.canonical(attemptRoot);
+    if (paths.dirname(createdCanonical) !== canonicalParent) throw linkedError('attempt directory changed after creation', { attemptRoot, createdCanonical, canonicalParent });
+    attemptRoot = createdCanonical;
     while (queue.length) {
       const node = queue.shift()!;
       const nodeIdentity = identityOf(node.canonicalPath, node.descriptor);

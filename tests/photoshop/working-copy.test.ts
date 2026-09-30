@@ -66,6 +66,15 @@ describe('working-copy isolation', () => {
     expect(operation.calls.every((call) => call.parent.startsWith(result.attemptRoot))).toBe(true);
   });
 
+  it('uses the created attempt directory canonical path for copied links', async () => {
+    const f = await fixture();
+    const requestedAttempt = join(f.working, 'canonical-attempt');
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    const result = await createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: requestedAttempt, operation });
+    expect(result.attemptRoot).toBe(await realpath(requestedAttempt));
+    expect(result.closure.every((entry) => entry.copyPath.startsWith(`${result.attemptRoot}/`))).toBe(true);
+  });
+
   it('rejects symlink escapes, missing links, changed expected hashes and unknown linkage', async () => {
     const f = await fixture();
     const escape = join(f.source, 'escape.psb');
@@ -229,7 +238,7 @@ describe('working-copy isolation', () => {
       remove: async (path: string) => { removed.push(path); await rm(path, { recursive: true, force: true }); },
     };
     await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot, operation, filesystem })).rejects.toMatchObject({ code: 'LINKED_SOURCE_UNISOLATED' });
-    expect(removed).toEqual([attemptRoot]);
+    expect(removed).toEqual([join(await realpath(f.working), 'safe-failure')]);
   });
 
   it('supports injected Windows path semantics without embedding host paths', async () => {
