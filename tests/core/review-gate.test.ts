@@ -119,6 +119,11 @@ describe('automated review gate', () => {
     f.result.variantChecks[1]!.verdict = 'fail';
     await expect(gateAutomatedReview(f.input)).rejects.toThrow(/variant|pass/i);
   });
+  it('rejects a mandatory pass with no cited evidence', async () => {
+    const f = await fixture();
+    f.result.checks[0]!.evidenceRefs = [];
+    await expect(gateAutomatedReview(f.input)).rejects.toThrow(/mandatory|evidence/i);
+  });
   it('retains the sealed staged bundle on reviewer outage and detects drift', async () => {
     const f = await fixture();
     f.input.reviewer.review = async () => { throw new Error('offline'); };

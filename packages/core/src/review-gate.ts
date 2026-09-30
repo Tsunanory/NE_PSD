@@ -125,6 +125,8 @@ function validateDecision(input: ReviewGateInput, decision: ReviewDecision, evid
   const known = new Set(input.manifest.files.map((file) => file.relativePath));
   const refs = [...parsed.checks.flatMap((check) => check.evidenceRefs), ...parsed.variantChecks.flatMap((check) => check.evidenceRefs), ...parsed.findings.flatMap((finding) => finding.evidenceRefs)];
   if (refs.some((ref) => !known.has(ref))) fail('DECISION_REFERENCE_INVALID', 'review cited unsealed evidence');
+  if (parsed.verdict === 'pass' && parsed.checks.some((check) => check.evidenceRefs.length === 0 || !check.reason.trim()))
+    fail('DECISION_MANDATORY_EVIDENCE_MISSING', 'mandatory pass requires cited evidence and a reason');
   for (const [index, id] of (['1', '2', '3'] as const).entries()) {
     const variant = parsed.variantChecks[index];
     const output = input.evidence.artifacts[index];
