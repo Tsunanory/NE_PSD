@@ -3,9 +3,9 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { bundleDigest, sha256Json, type EvidenceBundleManifest, type ReviewDecision } from '@ne-psd/contracts';
+import { bundleDigest, canonicalize, sha256Json, type EvidenceBundleManifest, type ReviewDecision } from '@ne-psd/contracts';
 import { filesystemIdentity, type PublicationIntent } from '../../packages/core/src/job-repository.js';
-import { publishStagedDirectory } from '../../packages/core/src/publication.js';
+import { committedManifest, publishStagedDirectory } from '../../packages/core/src/publication.js';
 import type { ReviewGateResult } from '../../packages/core/src/review-gate.js';
 import { readFixture } from '../fixtures/read-fixture.js';
 
@@ -72,6 +72,13 @@ describe('whole-directory publication', () => {
     await writeFile(join(f.destinationPath, 'foreign.txt'), 'keep');
     await expect(publishStagedDirectory(f.intent, f.manifest, f.review)).rejects.toThrow();
     expect(await readFile(join(f.destinationPath, 'foreign.txt'), 'utf8')).toBe('keep');
+  });
+
+  it('resumes a crash after the committed manifest was synced but before rename', async () => {
+    const f = await fixture();
+    await writeFile(join(f.stagingDirectory, 'committed-manifest.json'), canonicalize(committedManifest(f.intent, f.manifest, f.review)));
+    await publishStagedDirectory(f.intent, f.manifest, f.review);
+    expect(await readdir(f.destinationPath)).toHaveLength(4);
   });
 
   it('rejects a changed output root and unpassed review', async () => {

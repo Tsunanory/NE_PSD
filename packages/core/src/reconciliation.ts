@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, realpath, readdir, rename } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { bundleDigest, canonicalize, EvidenceBundleManifestSchema } from '@ne-psd/contracts';
-import { filesystemIdentity, type PublicationIntent } from './job-repository.js';
+import { filesystemIdentity, type JobRepository, type PublicationIntent } from './job-repository.js';
 import { verifyEvidenceBundle } from './evidence-bundle.js';
 import { committedManifestName, type CommittedManifest } from './publication.js';
 
@@ -67,8 +67,43 @@ export async function quarantineCommittedDirectory(intent: PublicationIntent): P
   const quarantineRoot = join(intent.outputRootPath, 'quarantine');
   await mkdir(quarantineRoot, { recursive: true });
   if (await realpath(quarantineRoot) !== quarantineRoot) throw new Error('quarantine root changed');
-  const quarantinePath = join(quarantineRoot, randomUUID());
+  const quarantinePath = quarantinePathFor(intent);
+  try { await lstat(quarantinePath); throw new Error('quarantine destination already exists'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   await assertBoundDestination(intent);
   await rename(intent.destinationPath, quarantinePath);
   return quarantinePath;
+}
+
+export function quarantinePathFor(intent: PublicationIntent): string {
+  return join(intent.outputRootPath, 'quarantine', createHash('sha256').update(intent.transactionKey).digest('hex'));
+}
+
+export async function reconcilePendingPublications(repository: JobRepository): Promise<Array<{ transactionKey: string; result: 'completed' | 'quarantined' }>> {
+  const results: Array<{ transactionKey: string; result: 'completed' | 'quarantined' }> = [];
+  for (const intent of repository.listPendingPublicationIntents()) {
+    const state = await inspectCommittedDirectory(intent);
+    if (state === 'valid') {
+      const committed = JSON.parse(await readFile(join(intent.destinationPath, committedManifestName), 'utf8')) as CommittedManifest;
+      repository.completePublicationIntent(intent, { publicationId: intent.transactionKey, jobId: intent.jobId,
+        assetId: intent.assetId, attempt: intent.attempt, transactionKey: intent.transactionKey,
+        path: intent.destinationPath, manifest: committed });
+      results.push({ transactionKey: intent.transactionKey, result: 'completed' });
+    } else if (state === 'corrupt') {
+      await quarantineCommittedDirectory(intent);
+      repository.markPublicationQuarantined(intent.jobId, intent.assetId, intent.attempt);
+      results.push({ transactionKey: intent.transactionKey, result: 'quarantined' });
+    } else {
+      const quarantine = await lstat(quarantinePathFor(intent)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (quarantine) {
+        if (!quarantine.isDirectory() || quarantine.isSymbolicLink()) throw new Error('quarantine path changed');
+        repository.markPublicationQuarantined(intent.jobId, intent.assetId, intent.attempt);
+        results.push({ transactionKey: intent.transactionKey, result: 'quarantined' });
+      }
+    }
+  }
+  return results;
 }

@@ -1,14 +1,15 @@
 import { constants } from 'node:fs';
-import { lstat, open, readdir, realpath, rename, stat } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, realpath, rename, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { platform } from 'node:os';
 import {
   bundleDigest, canonicalize, EvidenceBundleManifestSchema, ReviewDecisionSchema, sha256Json,
   type EvidenceBundleManifest,
 } from '@ne-psd/contracts';
-import { filesystemIdentity, type PublicationIntent } from './job-repository.js';
+import { filesystemIdentity, type JobRepository, type PublicationIntent } from './job-repository.js';
 import { verifyEvidenceBundle } from './evidence-bundle.js';
 import type { ReviewGateResult } from './review-gate.js';
+import { inspectCommittedDirectory } from './reconciliation.js';
 
 export const committedManifestName = 'committed-manifest.json';
 export type CommittedManifest = {
@@ -110,13 +111,22 @@ export async function publishStagedDirectory(intent: PublicationIntent, manifest
   await validatePublicationRoot(intent);
   await verifyEvidenceBundle(intent.stagingDirectory, manifest);
   const sealedPaths = new Set(manifest.files.map((file) => file.relativePath));
-  if ((await stagedFiles(intent.stagingDirectory)).some((path) => !sealedPaths.has(path))) fail('unlisted staged file is not sealed');
+  if ((await stagedFiles(intent.stagingDirectory)).some((path) => path !== committedManifestName && !sealedPaths.has(path))) fail('unlisted staged file is not sealed');
   if (await lstat(intent.destinationPath).then(() => true, (error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return false;
     throw error;
   })) fail('destination already exists');
-  const handle = await open(join(intent.stagingDirectory, committedManifestName), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
-  try { await handle.writeFile(canonicalize(committed)); await handle.sync(); } finally { await handle.close(); }
+  const manifestPath = join(intent.stagingDirectory, committedManifestName);
+  const expectedManifest = canonicalize(committed);
+  const prior = await readFile(manifestPath, 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (prior !== null && prior !== expectedManifest) fail('staged committed manifest differs from persisted intent');
+  if (prior === null) {
+    const handle = await open(manifestPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+    try { await handle.writeFile(expectedManifest); await handle.sync(); } finally { await handle.close(); }
+  }
   await syncTree(intent.stagingDirectory);
   await verifyEvidenceBundle(intent.stagingDirectory, manifest);
   await validatePublicationRoot(intent);
@@ -125,4 +135,17 @@ export async function publishStagedDirectory(intent: PublicationIntent, manifest
   if (await lstat(intent.destinationPath).then(() => true, () => false)) fail('destination already exists');
   await rename(intent.stagingDirectory, intent.destinationPath);
   await syncDirectory(dirname(intent.destinationPath));
+}
+
+export async function publishReviewedAsset(repository: JobRepository, input: Omit<PublicationIntent, 'state'>,
+  manifest: EvidenceBundleManifest, review: ReviewGateResult): Promise<void> {
+  const intent = repository.beginPublicationIntent(input);
+  const before = await inspectCommittedDirectory(intent);
+  if (before === 'corrupt') fail('existing destination is corrupt');
+  if (before === 'missing') await publishStagedDirectory(intent, manifest, review);
+  if (await inspectCommittedDirectory(intent) !== 'valid') fail('renamed publication failed verification');
+  const committed = JSON.parse(await readFile(join(intent.destinationPath, committedManifestName), 'utf8')) as CommittedManifest;
+  repository.completePublicationIntent(intent, { publicationId: intent.transactionKey,
+    jobId: intent.jobId, assetId: intent.assetId, attempt: intent.attempt,
+    transactionKey: intent.transactionKey, path: intent.destinationPath, manifest: committed });
 }
