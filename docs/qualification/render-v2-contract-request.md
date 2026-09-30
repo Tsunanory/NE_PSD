@@ -1,0 +1,49 @@
+# A ↔ B render v2 contract request
+
+Status: proposed A-owned shared contract, 2026-09-30. The schemas below do not certify a Photoshop implementation. B's `docs/photoshop/integration-request-2026-09-30.md` (B commit `0d0ac39`) agrees that B owns the only installation lock and that A must hand off an owned source and complete linked closure.
+
+## Old and new wire shapes
+
+`RenderRequest` v1 has `jobId`, `asset`, `profile`, `attempt` and absolute `stagingDirectory`; it has no copy path or operation identity. A currently copies an optional runner-wide source and passes only the original `asset.source`. `PhotoshopBackend.recover(jobId)` returns a bare `safe` boolean. These v1 exports remain available for legacy diagnostic consumers. Production A/B integration must explicitly select `PhotoshopBackendV2`; it must not convert v1 requests or silently fall back.
+
+`PrepareRequestV2` identifies the job, selected asset, sealed profile, attempt, operation, canonical source-root binding, staging directory and scratch directory. B's new `PhotoshopBackendV2.prepareOwnedInput` performs read-only per-asset source/link discovery and returns `PreparedInputManifestV2`: either `status: prepared` with the *asset source* `FileRef`/bytes, complete linked-source inventory, `closureComplete: true` and digest-bound proof; or `status: blocked` with typed errors and no fabricated closure. The manifest repeats the exact staging directory and source-root path/identity, and separately includes the *template* `FileRef` and sealed profile digest. B's template PSD/PSB working-copy dependency closure remains B-owned and is proved during render. A copies the prepared asset source and dependencies, verifies exact bytes, and calls `validateRenderRequestV2` against that manifest.
+
+`RenderRequestV2` keeps the v1 identity fields and `JobSpec` v1, but uses `schemaVersion: 2` and requires:
+
+```typescript
+{
+  operationId: string; // persisted unique identity for this job/asset/attempt
+  ownedInput: {
+    scratchDirectory: string; // relative to stagingDirectory
+    sourceRootIdentity: string; // matches the prepared source-root filesystem identity
+    source: { relativePath: string; sha256: string; bytes: number };
+    dependencies: Array<{
+      identity: string; original: FileRef; sourceKind: 'linked';
+      relativePath: string; sha256: string; bytes: number;
+    }>;
+    closureProof: { relativePath: string; sha256: string };
+  };
+}
+```
+
+The source copy digest/bytes must equal `asset.source.sha256`/`asset.sourceBytes`. Each dependency's initial copy digest must equal its original `FileRef.sha256`. Every owned path is distinct and lexically inside `scratchDirectory`, which is itself inside `stagingDirectory`. `stagingDirectory` remains the only absolute **render** request path. The preparation request also carries the absolute trusted source root so B can check the original `FileRef`. The `closureProof` file must be produced by B's dependency discovery before the render request is admitted; an empty `dependencies` array alone is not evidence that no links exist. `RenderEvidenceV2` adds separate digest-bound, attempt-relative `ownedInputProof`, `templateClosureProof`, and `releaseProof` files, with `released: true` required for a successful render result. The first records the actual opened *asset source*, its linked closure, original and copied byte hashes, and any expected mutations to owned parent copies. The second records B's *template PSD/PSB* working-copy, nested linked closure, original and copied bytes, and document route. The third records B's verified installation-lock release. B must produce these files from observed operations, not echo the request. A rehashes each proof file; neither `released: true` nor a path string is itself proof of OS lock safety.
+
+`RecoveryRequestV2` binds `jobId`, `assetId`, `attempt` and `operationId`. `RecoveryResultV2` repeats those fields and includes `safe`, `released`, evidence paths and a digest-bound release-proof file. `safe: true` requires `released: true` and a release proof; unsuccessful recovery must report both false. A verifies response identity and evidence bytes before clearing its local admission barrier. A cannot derive safety from a late transport result or its own timer.
+
+## Producer and filesystem obligations
+
+B alone calls `SessionLock.runExclusive`, retains ambiguous ownership, performs recovery-only stale-owner adoption, and releases the OS-visible installation lock. A removes its separate `PhotoshopLease` acquire/retain/release calls; its serializer remains only a process-local admission guard. B's render promise may resolve only after the underlying call settles, the operation journal reaches a terminal state, every owned document is discarded and re-inventoried, original source/dependency bytes are rehashed, and `SessionLock.release()` confirms `{ released: true }`. A successful `recover` has the same postconditions. Current B `SessionLock.runExclusive` and `reconcile` ignore `{ released: false }` (`packages/photoshop/src/session-lock.ts:189-193,213-226` in B's 2026-09-30 tree); B must correct that before A consumes v2 safety results.
+
+Zod checks shape and lexical containment only. A must canonicalize the staging root, create and record a fresh attempt scratch directory, resolve the selected asset's source for *that* asset, copy exact bytes and rehash them, persist the v2 intent before dispatch, and refuse symlink/reparse-point or root escape. B must independently canonicalize/re-hash the owned copies, compare the actual discovered linked closure to the declared manifest, reject missing/unknown links, and open only the owned source. B's template working-copy closure remains B-owned and must likewise be copied/relinked or embedded under a job-owned root. A and B must preserve original PSD, image and linked dependency bytes. Neither schema fields nor caller-provided booleans prove these filesystem and Photoshop facts.
+
+`sourceRoot.identity` uses A's existing `filesystemIdentity` rule (`packages/core/src/job-repository.ts:25`): SHA-256 of the canonical absolute path, `stat.dev`, and `stat.ino` joined as `${canonicalPath}|${dev}|${ino}`. Canonicalize with the host's native `realpath` before hashing; do not lowercase or translate separators from another OS. It is a same-host binding, not a portable `FileRef`. B recomputes it from the exact `sourceRoot.path`; A and B must test one shared root and reject a changed path, device, inode, symlink or Windows reparse target. This packet does not move the existing core helper while T2a owns core files.
+
+**Open B producer implementation:** the current public `InspectionReport` describes template documents and unresolved links, but does not seal a per-asset dependency inventory. B's `working-copy.ts` discovers closure while creating copies. B must implement the new typed `prepareOwnedInput` producer under its sole lock, persist the observed closure proof and return `blocked` for unknown links; then recheck A's staged exact closure before any render mutation. A decoded raster may have an empty dependency list only after a positive link-free scan. Unknown links and PSD input without a qualified recursive discovery path are blocked; A never sends an unchecked empty list. This schema commit defines the interface only; neither B producer nor A core composition is implemented here.
+
+B must persist an operationId → attempt-root/owner/journal identity mapping outside the lock directory before Photoshop dispatch. `RecoveryRequestV2` has no caller-selected evidence root: B resolves it from that durable mapping and rejects missing or mismatched identity. The release-proof file must survive `SessionLock.release()` deleting the lock directory and its journal; store it in the attempt evidence root. It binds the owner token, installation digest, operation ID, terminal journal digest, document reconciliation, original hashes and confirmed release outcome. A rehashes the file and checks those bindings before unblocking. A `safe:true`/`released:true` result without this durable proof is invalid even if the transport replied late.
+
+## Migration and acceptance
+
+The shared v1 schemas, interfaces, fixtures and `JobSpec` storage remain unchanged. A generates separate v2 JSON Schemas/fixtures, then adds an attempt-intent database migration in a later A package: nullable v2 operation/binding fields for legacy rows, mandatory for new dispatch. A must block and reconcile an in-flight v1 attempt; it may start a fresh v2 attempt only after B proves safety. It must not replay an uncertain operation or silently treat a v1 row as v2. B imports A's reviewed shared-contract commit, implements `PhotoshopBackendV2` within B-owned paths, and hands back a fixed reviewed commit. A does not import B's dirty tree.
+
+Contract tests cover strict unknown-key rejection, v1/v2 separation, prepared/blocked inventory, template-versus-asset binding, source/dependency byte binding, distinct confined copy paths, exact recovery identity and safe/released consistency. Pairwise A/B tests must prove B opened the declared copy, discovered all linked dependencies, preserved originals, prevented a second process from mutating, held the lock after late save or release failure, and released only after durable read-only reconciliation. Fakes prove this protocol only; Photoshop and Windows remain live gates.
