@@ -91,7 +91,7 @@ export class FakeJobService extends ContractFakeJobService {
   }
 
   override subscribe(jobId: string, listener: (event: JobEvent) => void): () => void {
-    const unsubscribe = super.subscribe(jobId, listener);
+    const unsubscribe = super.subscribe(jobId, (event) => { if (!this.fixtureSnapshots.has(jobId)) listener(event); });
     const fixtureListeners = this.fixtureListeners.get(jobId) ?? new Set<(event: JobEvent) => void>();
     fixtureListeners.add(listener);
     this.fixtureListeners.set(jobId, fixtureListeners);
@@ -111,7 +111,30 @@ export class FakeJobService extends ContractFakeJobService {
   }
 
   override events(jobId: string): readonly JobEvent[] {
-    return [...super.events(jobId), ...this.fixtureEvents.get(jobId) ?? []];
+    const fixture = this.fixtureEvents.get(jobId) ?? [];
+    return fixture.length ? [...super.events(jobId).filter((event) => event.sequence < fixture[0]!.sequence), ...fixture] : super.events(jobId);
+  }
+
+  override async pause(jobId: string): Promise<void> {
+    const fixture = this.fixtureSnapshots.get(jobId);
+    if (fixture && fixture.state !== 'running') throw new Error('fake job is not running');
+    await super.pause(jobId);
+    if (fixture) this.publishFixture(jobId, { ...fixture, state: 'paused' });
+  }
+
+  override async resume(jobId: string): Promise<void> {
+    const fixture = this.fixtureSnapshots.get(jobId);
+    if (fixture && fixture.state !== 'paused') throw new Error('fake job is not paused');
+    await super.resume(jobId);
+    if (fixture) this.publishFixture(jobId, { ...fixture, state: 'running' });
+  }
+
+  override async cancel(jobId: string): Promise<void> {
+    const fixture = this.fixtureSnapshots.get(jobId);
+    if (fixture && !['running', 'pausing', 'paused'].includes(fixture.state)) throw new Error('fake job cannot be cancelled');
+    await super.cancel(jobId);
+    if (fixture) this.publishFixture(jobId, { ...fixture, state: 'cancelled',
+      assets: fixture.assets.map((asset) => asset.status === 'complete' ? asset : { ...asset, status: 'cancelled' }) });
   }
 
   override async visualReview(jobId: string, assetId: string): Promise<VisualReviewRequest | null> {
@@ -128,6 +151,8 @@ export class FakeJobService extends ContractFakeJobService {
     const before = await this.snapshot(jobId);
     if (before.state !== 'running') throw new Error('fake job must be running to complete');
     super.publish(jobId);
+    if (this.fixtureSnapshots.has(jobId)) this.publishFixture(jobId, { ...before, state: 'completed', complete: before.total,
+      assets: before.assets.map((asset) => ({ ...asset, status: 'complete' })) });
     return this.snapshot(jobId);
   }
 

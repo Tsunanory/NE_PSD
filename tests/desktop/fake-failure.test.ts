@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { JobEvent, JobSpec } from '@ne-psd/contracts';
 import { loadFixture } from '@ne-psd/contracts/testing';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { FakeJobService } from '../../apps/desktop/src/main/fake-job-service.js';
+import { JobSessionController } from '../../apps/desktop/src/main/job-session-controller.js';
 
 describe('explicit development failure driver', () => {
   it('emits one frozen transient failure and retries only its failed asset as attempt two', async () => {
@@ -36,5 +40,32 @@ describe('explicit development failure driver', () => {
     await fake.pause(jobId);
     await expect(fake.failFakeJob(jobId)).rejects.toThrow('must be running');
     await expect(fake.retryFailed(jobId)).rejects.toThrow('no retryable failure');
+  });
+
+  it('pauses the retry successor through safe close and keeps emitted attempts sequenced', async () => {
+    const fake = new FakeJobService();
+    const { jobId } = await fake.start(loadFixture<JobSpec>('job.interactive.json'));
+    const sessions = new JobSessionController({ jobs: fake, userDataDirectory: mkdtempSync(join(tmpdir(), 'ne-psd-retry-close-')), developmentFake: true });
+    await sessions.recordStarted(jobId);
+    await fake.failFakeJob(jobId);
+    const successor = await fake.retryFailed(jobId);
+    await sessions.recordRetry(jobId, successor.jobId);
+    await expect(sessions.safeClose()).resolves.toBeUndefined();
+    expect(await fake.snapshot(successor.jobId)).toMatchObject({ state: 'paused', assets: [{ status: 'queued', attempt: 2 }] });
+    expect((await fake.snapshot(jobId)).state).toBe('failed');
+    expect(fake.events(successor.jobId).map((event) => event.sequence)).toEqual([2, 3, 4]);
+    await fake.resume(successor.jobId);
+    expect(await fake.completeFakeJob(successor.jobId)).toMatchObject({ state: 'completed', complete: 1, assets: [{ status: 'complete', attempt: 2 }] });
+    expect(fake.events(successor.jobId).map((event) => event.sequence)).toEqual([2, 3, 4, 5, 6]);
+  });
+
+  it('cancels a retry successor without leaving its overlay running', async () => {
+    const fake = new FakeJobService();
+    const { jobId } = await fake.start(loadFixture<JobSpec>('job.interactive.json'));
+    await fake.failFakeJob(jobId);
+    const successor = await fake.retryFailed(jobId);
+    await fake.cancel(successor.jobId);
+    expect(await fake.snapshot(successor.jobId)).toMatchObject({ state: 'cancelled', assets: [{ status: 'cancelled', attempt: 2 }] });
+    expect(fake.events(successor.jobId).map((event) => event.sequence)).toEqual([2, 3, 4]);
   });
 });
