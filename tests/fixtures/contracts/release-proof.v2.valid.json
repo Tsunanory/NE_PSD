@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "jobId": "job-1",
+  "attempt": 1,
+  "operationId": "job-1:asset-1:1",
+  "assetId": "asset-1",
+  "released": true,
+  "ownerIdentitySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "journalSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ownerSnapshot": {
+    "relativePath": "checks/release-owner.json",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "journalSnapshot": {
+    "relativePath": "checks/release-journal.jsonl",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

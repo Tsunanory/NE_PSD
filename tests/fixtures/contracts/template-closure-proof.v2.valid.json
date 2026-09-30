@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "jobId": "job-1",
+  "attempt": 1,
+  "operationId": "job-1:asset-1:1",
+  "assetId": "asset-1",
+  "template": {
+    "rootId": "fixture-root",
+    "relativePath": "assets/template.psd",
+    "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+  },
+  "workingTemplateRelativePath": "template/working.psd",
+  "closureEntries": [
+    {
+      "original": {
+        "rootId": "fixture-root",
+        "relativePath": "assets/template.psd",
+        "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+      },
+      "ownedRelativePath": "template/working.psd",
+      "bytes": 20,
+      "originalBeforeSha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b",
+      "originalAfterSha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b",
+      "copyBeforeSha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b",
+      "copyAfterSha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b",
+      "identity": "template-root",
+      "sourceKind": "template"
+    }
+  ],
+  "observedLinks": [],
+  "documentTrace": {
+    "relativePath": "checks/document-trace.json",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

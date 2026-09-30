@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { PrepareRequestV2Schema, PreparedInputManifestV2Schema, RenderRequestV2Schema, RenderEvidenceV2Schema, RecoveryRequestV2Schema, RecoveryResultV2Schema } from '../packages/contracts/dist/render-v2.js';
+import { PrepareRequestV2Schema, PreparedInputManifestV2Schema, RenderRequestV2Schema, RenderEvidenceV2Schema, RecoveryRequestV2Schema, RecoveryResultV2Schema, OwnedInputProofV2Schema, TemplateClosureProofV2Schema, ReleaseProofV2Schema } from '../packages/contracts/dist/render-v2.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const schemaDir = join(root, 'packages/contracts/schema/v1');
@@ -51,6 +51,9 @@ export const V2_SCHEMAS = {
   'render-evidence.json': RenderEvidenceV2Schema,
   'recovery-request.json': RecoveryRequestV2Schema,
   'recovery-result.json': RecoveryResultV2Schema,
+  'owned-input-proof.json': OwnedInputProofV2Schema,
+  'template-closure-proof.json': TemplateClosureProofV2Schema,
+  'release-proof.json': ReleaseProofV2Schema,
 };
 
 export function generatedV2Schema(fileName) {

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 2
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attempt": {
+      "anyOf": [
+        {
+          "type": "number",
+          "const": 1
+        },
+        {
+          "type": "number",
+          "const": 2
+        }
+      ]
+    },
+    "operationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "released": {
+      "type": "boolean",
+      "const": true
+    },
+    "ownerIdentitySha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "journalSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "ownerSnapshot": {
+      "type": "object",
+      "properties": {
+        "relativePath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "relativePath",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "journalSnapshot": {
+      "type": "object",
+      "properties": {
+        "relativePath": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "relativePath",
+        "sha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "assetId",
+    "attempt",
+    "operationId",
+    "released",
+    "ownerIdentitySha256",
+    "journalSha256",
+    "ownerSnapshot",
+    "journalSnapshot"
+  ],
+  "additionalProperties": false,
+  "x-runtime-only-invariants": [
+    "candidate existence, role and document-route compatibility",
+    "source/profile/backend/tool-schema/fit-mode and current-attempt binding",
+    "manifest path existence, digest and byte verification, including digestWithoutSelfHash",
+    "review policy digest, exact evidence closure and reviewer provenance qualification",
+    "canonical filesystem containment and symlink/reparse-point rejection",
+    "source/dependency byte hashes, complete discovered closure and actual opened-copy proof",
+    "exact attempt/operation identity, settled mutation, owned-document cleanup and OS-lock release proof"
+  ],
+  "$id": "@ne-psd/contracts/schema/v2/release-proof.json"
+}
