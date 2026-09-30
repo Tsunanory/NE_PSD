@@ -5,6 +5,7 @@ import {
   validatePreparedInputManifestV2, validateRenderRequestV2, validateRenderEvidenceV2,
   validateRecoveryResultV2, validateOwnedInputProofV2, validateTemplateClosureProofV2,
   validateReleaseProofV2,
+  AssetSchema, JobSpecSchema, sha256Json,
 } from '@ne-psd/contracts';
 import type { Asset, JobSpec, PhotoshopBackendV2, PreparedInputManifestV2, RenderEvidenceV2, RenderRequestV2, RecoveryRequestV2 } from '@ne-psd/contracts';
 import type { JobRepository, OutputRootBinding } from './job-repository.js';
@@ -25,7 +26,7 @@ export type RenderRunnerOptions = {
   timeoutMs?: number;
   serialization?: BackendSerialization;
 };
-export type RenderAttemptResult = { evidence: RenderEvidenceV2; workspace: AttemptWorkspace };
+export type RenderAttemptResult = { request: RenderRequestV2; evidence: RenderEvidenceV2; workspace: AttemptWorkspace };
 type ProofRef = { relativePath: string; sha256: string };
 const coded = (code: string, message: string, cause?: unknown) => Object.assign(new Error(message), { code, cause });
 const identity = (request: { jobId: string; assetId?: string; asset?: Asset; attempt: 1 | 2; operationId: string }) => ({
@@ -45,6 +46,13 @@ export class RenderRunner {
   }
 
   private async renderAdmitted(job: JobSpec, asset: Asset, attempt: 1 | 2, parentSignal?: AbortSignal): Promise<RenderAttemptResult> {
+    job = JobSpecSchema.parse(job);
+    asset = AssetSchema.parse(asset);
+    const stored = this.options.repository.getJobSpec(job.jobId);
+    const selected = stored.assets.find((entry) => entry.assetId === asset.assetId);
+    if (!selected || sha256Json(job) !== sha256Json(stored) || sha256Json(asset) !== sha256Json(selected)) {
+      throw coded('JOB_BINDING_MISMATCH', 'render input differs from persisted job and selected asset');
+    }
     if (this.options.repository.pendingMutations(this.options.installationId).length) {
       this.serialization.block();
       throw coded('MUTATION_BLOCKED', 'unresolved Photoshop attempt requires recovery');
@@ -63,7 +71,9 @@ export class RenderRunner {
       operationId, stagingDirectory: workspace.root, scratchDirectory: 'scratch',
       sourceRoot: { rootId: sourceRoot.rootId, path: sourceRoot.canonicalRoot, identity: sourceRoot.canonicalRootIdentity },
     };
-    const preparedRaw = await this.options.backend.prepareOwnedInput(prepareRequest, parentSignal ?? new AbortController().signal);
+    const dispatchedPrepare = structuredClone(prepareRequest);
+    const preparedRaw = await this.options.backend.prepareOwnedInput(dispatchedPrepare, parentSignal ?? new AbortController().signal);
+    if (sha256Json(dispatchedPrepare) !== sha256Json(prepareRequest)) throw coded('PREPARE_REQUEST_MUTATED', 'backend changed the preparation request');
     const checked = validatePreparedInputManifestV2(preparedRaw, prepareRequest);
     if (!checked.success) throw coded('PREPARED_INPUT_INVALID', 'Photoshop prepared input manifest is invalid', checked.error);
     const prepared = checked.data;
@@ -87,6 +97,7 @@ export class RenderRunner {
     };
     const validatedRequest = validateRenderRequestV2(request, prepared);
     if (!validatedRequest.success) throw coded('RENDER_REQUEST_INVALID', 'owned render request differs from prepared input', validatedRequest.error);
+    const requestSnapshot = structuredClone(validatedRequest.data);
     if (parentSignal?.aborted || this.options.repository.controlState(job.jobId) !== null) throw coded('CONTROL_REQUESTED', 'job control changed before mutation dispatch');
     this.options.repository.beginV2Attempt(job.jobId, asset.assetId, attempt, {
       installationId: this.options.installationId, operationId, stagingDirectory: workspace.root, sourceRootIdentity: sourceRoot.canonicalRootIdentity,
@@ -94,18 +105,20 @@ export class RenderRunner {
     this.options.repository.markV2Dispatched(job.jobId, asset.assetId, attempt, operationId);
     const cancellation = createOperationCancellation(this.options.timeoutMs ?? 120_000, parentSignal);
     try {
-      const render = this.options.backend.render(request, cancellation.signal);
+      const dispatchedRender = structuredClone(requestSnapshot);
+      const render = this.options.backend.render(dispatchedRender, cancellation.signal);
       const timeout = cancellation.deadline.then(() => { throw coded('AMBIGUOUS_STATE', 'render deadline elapsed'); });
       const raw = await Promise.race([render, timeout]);
-      const validated = validateRenderEvidenceV2(raw, request);
+      if (sha256Json(dispatchedRender) !== sha256Json(requestSnapshot)) throw coded('RENDER_REQUEST_MUTATED', 'backend changed the render request');
+      const validated = validateRenderEvidenceV2(raw, requestSnapshot);
       if (!validated.success) throw coded('RENDER_EVIDENCE_INVALID', 'render evidence identity or shape invalid', validated.error);
-      await this.verifyRenderProofs(workspace, request, prepared, validated.data);
+      await this.verifyRenderProofs(workspace, requestSnapshot, prepared, validated.data);
       this.options.repository.markV2Safe(job.jobId, asset.assetId, attempt, operationId);
       this.serialization.clearBlocked();
       const after = this.options.repository.controlState(job.jobId);
       if (after === 'pause') this.options.repository.acknowledgePause(job.jobId);
       if (after === 'cancel') this.options.repository.acknowledgeCancel(job.jobId);
-      return { evidence: validated.data, workspace };
+      return { request: requestSnapshot, evidence: validated.data, workspace };
     } catch (error) {
       this.serialization.block();
       this.options.repository.markV2Ambiguous(job.jobId, asset.assetId, attempt, operationId);

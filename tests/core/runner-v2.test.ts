@@ -75,7 +75,7 @@ describe('V2 render runner', () => {
       return f.renderEvidence(request); } } as unknown as PhotoshopBackendV2;
     const runner = new RenderRunner({ repository: f.repository, backend, installationId: 'install-1', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 });
     const result = await runner.render(job, f.asset, 1);
-    expect(result.evidence.operationId).toBeTruthy(); expect(renders).toBe(1);
+    expect(result.evidence.operationId).toBeTruthy(); expect(result.request.operationId).toBe(result.evidence.operationId); expect(renders).toBe(1);
     expect(f.repository.pendingMutations('install-1')).toEqual([]);
   });
 
@@ -263,6 +263,16 @@ describe('V2 render runner', () => {
     await expect(new RenderRunner(options).render(firstJob, f.asset, 1)).rejects.toMatchObject({ code: 'AMBIGUOUS_STATE' });
     await expect(new RenderRunner(options).render(secondJob, f.asset, 1)).rejects.toMatchObject({ code: 'MUTATION_BLOCKED' });
     expect(f.repository.snapshot(firstJob.jobId).assets[0]).toMatchObject({ status: 'blocked', attempt: 1 });
+  });
+
+  it('rejects backend mutation of its request instead of validating against the changed object', async () => {
+    const f = await fixture(); const job = f.addJob('mutated-request');
+    const backend = { prepareOwnedInput: f.prepared,
+      render: async (request: RenderRequestV2) => { request.profile.output.quality = 1; return f.renderEvidence(request); },
+      recover: async (request: any) => ({ ...request, safe: false, released: false, releaseProof: null, evidencePaths: [] }) } as unknown as PhotoshopBackendV2;
+    const runner = new RenderRunner({ repository: f.repository, backend, installationId: 'mutation-install', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 });
+    await expect(runner.render(job, f.asset, 1)).rejects.toMatchObject({ code: 'AMBIGUOUS_STATE' });
+    expect(f.repository.pendingMutations('mutation-install')).toHaveLength(1);
   });
 
   it('reconciles a persisted blocked attempt after restart without replaying it', async () => {
