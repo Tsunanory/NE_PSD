@@ -62,6 +62,33 @@ async function fixture() {
 }
 
 describe('deterministic artifact QA', () => {
+  it('checks V2 owned source and proof bytes without stripping operation identity', async () => {
+    const f = await fixture();
+    const source = await readFile(join(f.root, 'source.png'));
+    await mkdir(join(f.root, 'scratch/input'), { recursive: true });
+    await mkdir(join(f.root, 'checks'), { recursive: true });
+    await writeFile(join(f.root, 'scratch/input/source.png'), source);
+    const refs: Record<string, { relativePath: string; sha256: string }> = {};
+    for (const [key, path] of Object.entries({ closureProof: 'checks/closure.json', ownedInputProof: 'checks/owned.json', templateClosureProof: 'checks/template.json', releaseProof: 'checks/release.json' })) {
+      const bytes = Buffer.from(JSON.stringify({ key, operationId: 'operation-v2' }));
+      await writeFile(join(f.root, path), bytes);
+      refs[key] = { relativePath: path, sha256: digest(bytes) };
+    }
+    const request = { ...f.request, schemaVersion: 2 as const, operationId: 'operation-v2', ownedInput: {
+      scratchDirectory: 'scratch', sourceRootIdentity: 'a'.repeat(64),
+      source: { relativePath: 'scratch/input/source.png', sha256: f.request.asset.source.sha256, bytes: source.length },
+      dependencies: [], closureProof: refs.closureProof!,
+    } };
+    const evidence = { ...f.evidence, schemaVersion: 2 as const, operationId: 'operation-v2',
+      ownedInputProof: refs.ownedInputProof!, templateClosureProof: refs.templateClosureProof!, released: true as const, releaseProof: refs.releaseProof! };
+    const evidenceInputDigests = { ...f.input.evidenceInputDigests, 'scratch/input/source.png': digest(source),
+      ...Object.fromEntries(Object.values(refs).map((ref) => [ref.relativePath, ref.sha256])) };
+    const input = { ...f.input, request, evidence, sourceRelativePath: 'scratch/input/source.png', evidenceInputDigests };
+    await expect(verifyArtifactQa(input)).resolves.toMatchObject({ artifactChecksPassed: true });
+    await expect(verifyArtifactQa({ ...input, evidence: { ...evidence, operationId: 'other' } })).rejects.toMatchObject({ code: 'BINDING_MISMATCH' });
+    await writeFile(join(f.root, refs.releaseProof!.relativePath), 'tampered');
+    await expect(verifyArtifactQa(input)).rejects.toMatchObject({ code: 'EVIDENCE_INPUT_MISMATCH' });
+  });
   it('checks all three real images and returns quality as unqualified with duplicate pixels diagnostic', async () => {
     const f = await fixture();
     const result = await verifyArtifactQa(f.input);

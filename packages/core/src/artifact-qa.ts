@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import sharp from 'sharp';
-import { RenderEvidenceSchema, RenderRequestSchema, RelativePathSchema, type Rect, type RenderEvidence, type RenderRequest, type VariantId } from '@ne-psd/contracts';
+import { RenderEvidenceSchema, RenderRequestSchema, RenderEvidenceV2Schema, RenderRequestV2Schema, RelativePathSchema, type Rect, type RenderEvidence, type RenderRequest, type RenderEvidenceV2, type RenderRequestV2, type VariantId } from '@ne-psd/contracts';
 
 export type ArtifactQaInput = {
-  request: RenderRequest;
-  evidence: RenderEvidence;
+  request: RenderRequest | RenderRequestV2;
+  evidence: RenderEvidence | RenderEvidenceV2;
   expectedReviewPolicySha256: string;
   sourceRelativePath: string;
   evidenceInputDigests: Record<string, string>;
@@ -130,7 +130,7 @@ function checkGeometry(input: ArtifactQaInput, sourceWidth: number, sourceHeight
   }
 }
 
-function checkVisibility(evidence: RenderEvidence): void {
+function checkVisibility(evidence: RenderEvidence | RenderEvidenceV2): void {
   if (evidence.visibility.length !== 3) fail('VISIBILITY_MISMATCH', 'expected one visibility record per variant');
   for (const id of ids) {
     const matching = evidence.visibility.filter((item) => item.variantId === id);
@@ -139,8 +139,12 @@ function checkVisibility(evidence: RenderEvidence): void {
 }
 
 export async function verifyArtifactQa(input: ArtifactQaInput): Promise<ArtifactQaResult> {
-  if (!RenderRequestSchema.safeParse(input.request).success || !RenderEvidenceSchema.safeParse(input.evidence).success) fail('SCHEMA_INVALID', 'render request or evidence is malformed');
+  const v2 = input.request.schemaVersion === 2;
+  if (v2
+    ? !RenderRequestV2Schema.safeParse(input.request).success || !RenderEvidenceV2Schema.safeParse(input.evidence).success
+    : !RenderRequestSchema.safeParse(input.request).success || !RenderEvidenceSchema.safeParse(input.evidence).success) fail('SCHEMA_INVALID', 'render request or evidence is malformed');
   const { request, evidence } = input;
+  if (request.schemaVersion === 2 && (evidence.schemaVersion !== 2 || evidence.operationId !== request.operationId)) fail('BINDING_MISMATCH', 'V2 operation identity differs from request');
   if (!sha256.test(input.expectedReviewPolicySha256)
     || evidence.jobId !== request.jobId || evidence.assetId !== request.asset.assetId || evidence.attempt !== request.attempt
     || evidence.profileSha256 !== request.profile.profileSha256 || evidence.sourceSha256 !== request.asset.source.sha256
@@ -159,7 +163,14 @@ export async function verifyArtifactQa(input: ArtifactQaInput): Promise<Artifact
   if (present.length !== 3 || present.some((path) => !paths.includes(path))) fail('ARTIFACT_SET_INVALID', 'export directory differs from declared three-file set');
 
   const sourcePath = safeRelative(input.sourceRelativePath);
+  if (request.schemaVersion === 2 && sourcePath !== request.ownedInput.source.relativePath) fail('BINDING_MISMATCH', 'V2 QA source must be the exact opened owned copy');
   const requiredInputs = new Set([sourcePath, evidence.documentTracePath, evidence.toolTracePath, ...evidence.checks.map((check) => check.evidencePath)]);
+  if (request.schemaVersion === 2 && evidence.schemaVersion === 2) {
+    for (const ref of [request.ownedInput.closureProof, evidence.ownedInputProof, evidence.templateClosureProof, evidence.releaseProof]) {
+      requiredInputs.add(ref.relativePath);
+      if (input.evidenceInputDigests[ref.relativePath] !== ref.sha256) fail('EVIDENCE_INPUT_MISMATCH', `V2 proof digest differs: ${ref.relativePath}`);
+    }
+  }
   if (evidence.checks.length === 0 || new Set(evidence.checks.map((check) => check.id)).size !== evidence.checks.length || evidence.checks.some((check) => !check.passed)) fail('EVIDENCE_INPUT_MISMATCH', 'producer check evidence is missing, duplicate, or reports failure');
   if (input.evidenceInputDigests[sourcePath] !== request.asset.source.sha256) fail('EVIDENCE_INPUT_MISMATCH', 'trusted source digest differs from requested source');
   for (const path of requiredInputs) if (!input.evidenceInputDigests[path]) fail('EVIDENCE_INPUT_MISMATCH', `missing expected digest for ${path}`);
