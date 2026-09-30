@@ -36,7 +36,6 @@ function fakeComposition(calls: string[], corruptOutput = false): LiveCompositio
   const profile = readFixture<Awaited<ReturnType<LiveComposition['seal']>>>('profile.qualified.json');
   const render = readFixture<Awaited<ReturnType<LiveComposition['renderCase']>>>('evidence.pass.json');
   return {
-    kind: 'test',
     inspect: async () => { calls.push('inspect'); return inspection; },
     prepareTemplate: async (sourcePath, attemptRoot) => {
       calls.push('prepare');
@@ -113,6 +112,13 @@ describe('B15 live machine and composition gate', () => {
     ]);
     expect(calls.at(-1)).toBe('cleanup');
     if (result.status !== 'blocked') expect(JSON.parse(await readFile(result.evidencePath, 'utf8')).cases).toHaveLength(6);
+  });
+
+  it('does not accept a caller-declared production label as live qualification', async () => {
+    const config = await machine();
+    const fake = Object.assign(fakeComposition([]), { kind: 'production' });
+    const result = await runLiveQualification(config, fake);
+    expect(result.status).toBe('protocol-exercised');
   });
 
   it('blocks a tampered artifact and still asks the composition to clean up', async () => {

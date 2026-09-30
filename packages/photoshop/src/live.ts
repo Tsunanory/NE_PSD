@@ -45,7 +45,6 @@ export type LiveDependency = { path: string; sha256: string; bytes: number };
 export type PreparedLiveTemplate = { workingTemplatePath: string; dependencies: LiveDependency[] };
 export type LiveCase = { mode: typeof MODES[number]; format: typeof FORMATS[number]; profile: TemplateProfile; ownedAssetPath: string; stagingDirectory: string };
 export type LiveComposition = {
-  kind: 'test' | 'production';
   inspect(templatePath: string, signal: AbortSignal): Promise<InspectionReport>;
   prepareTemplate(templatePath: string, attemptRoot: string, inspection: InspectionReport, signal: AbortSignal): Promise<PreparedLiveTemplate>;
   propose(inspection: InspectionReport, signal: AbortSignal): Promise<ConfigurationProposal>;
@@ -56,7 +55,7 @@ export type LiveComposition = {
 };
 export type LiveResult =
   | { status: 'blocked'; blocks: LiveBlock[] }
-  | { status: 'protocol-exercised' | 'qualified'; evidencePath: string; blocks: [] };
+  | { status: 'protocol-exercised'; evidencePath: string; blocks: [] };
 
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const absolute = (value: unknown, name: string): string => {
@@ -247,8 +246,8 @@ export async function runLiveQualification(config: LiveMachine, composition?: Li
     started = false;
     for (const [path, initial] of originals) await unchanged(path, initial);
     const summary = join(evidenceDirectory, 'live-sequence.json');
-    await writeFile(summary, JSON.stringify({ schemaVersion: 1, kind: composition.kind, cases, originals: [...originals], cleanup }, null, 2));
-    return { status: composition.kind === 'test' ? 'protocol-exercised' : 'qualified', evidencePath: summary, blocks: [] };
+    await writeFile(summary, JSON.stringify({ schemaVersion: 1, cases, originals: [...originals], cleanup }, null, 2));
+    return { status: 'protocol-exercised', evidencePath: summary, blocks: [] };
   } catch (error) {
     if (started) { try { await composition.cleanup(new AbortController().signal); } catch { /* retain uncertainty */ } }
     return { status: 'blocked', blocks: [{ code: 'B15_LIVE_SEQUENCE_FAILED', message: String(error) }] };
