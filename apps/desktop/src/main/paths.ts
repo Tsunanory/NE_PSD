@@ -17,6 +17,15 @@ export class RootRegistry {
     return handle;
   }
 
+  adopt(handle: string, kind: RootKind, path: string): void {
+    if (!handle || !isAbsolute(path) || !existsSync(path)) throw new Error('invalid trusted root binding');
+    const canonical = realpathSync(path);
+    if (!statSync(canonical).isDirectory()) throw new Error('root must be a directory');
+    const existing = this.roots.get(handle);
+    if (existing && (existing.path !== canonical || existing.kind !== kind)) throw new Error('root handle collision');
+    this.roots.set(handle, { path: canonical, kind });
+  }
+
   revoke(handle: string): void { this.roots.delete(handle); }
 
   root(handle: string, kind: RootKind): string {

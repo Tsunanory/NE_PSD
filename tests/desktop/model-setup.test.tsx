@@ -18,13 +18,17 @@ describe('desktop exact model setup', () => {
     const planner = modelCase('Q4');
     const reviewer = modelCase('Q6');
     expect(evaluateModelSelection(planner, reviewer).ready).toBe(true);
+    const textOnlyPlanner = { ...planner, capabilities: { ...planner.capabilities, vision: false }, selectedProfile: { ...planner.selectedProfile!, capabilities: { ...planner.selectedProfile!.capabilities, vision: false } }, reviewGateAvailable: false };
+    expect(evaluateModelSelection(textOnlyPlanner, reviewer).ready).toBe(true);
+    expect(evaluateModelSelection(textOnlyPlanner, reviewer).automatedVisual).toBe(true);
+    expect(evaluateModelSelection(textOnlyPlanner, { ...reviewer, qualification: { qualified: false, evidencePaths: [], errors: [] } }).ready).toBe(false);
     expect(evaluateModelSelection(planner, { ...reviewer, capabilities: { ...reviewer.capabilities, vision: false } }).automatedVisual).toBe(false);
     expect(evaluateModelSelection(planner, { ...reviewer, qualification: { qualified: false, evidencePaths: [], errors: [] } }).ready).toBe(false);
   });
   it('does not turn text-only review into a visual pass', () => {
     const evidence = modelCases.visionFailed;
     expect(evaluateModelSetup(evidence).automatedVisual).toBe(false);
-    expect(renderToStaticMarkup(<ModelSetup evidence={evidence} />)).toContain('Модель не проверяет изображение визуально');
+    expect(renderToStaticMarkup(<ModelSetup evidence={modelCase('Q4')} reviewer={evidence} />)).toContain('Модель не проверяет изображение визуально');
   });
   it('renders distinct gates and measured capacity', () => {
     const markup = renderToStaticMarkup(<ModelSetup evidence={modelCase('Q4')} reviewer={modelCase('Q6')} />);

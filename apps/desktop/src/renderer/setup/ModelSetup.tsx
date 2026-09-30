@@ -13,10 +13,11 @@ export type ModelSetupProps = {
   onRefreshEvidence?: (role: 'planner' | 'reviewer') => Promise<void>;
 };
 
-function EvidenceView({ role, evidence }: { role: string; evidence: ModelEvidence }): React.ReactElement {
-  const result = evaluateModelSetup(evidence);
-  return <section aria-label={role}>
-    <h3>{role}: {evidence.label}</h3><p>{result.message}</p>
+function EvidenceView({ role, evidence }: { role: 'planner' | 'reviewer'; evidence: ModelEvidence }): React.ReactElement {
+  const result = evaluateModelSetup(evidence, role);
+  const label = role === 'planner' ? 'Планировщик' : 'Рецензент изображений';
+  return <section aria-label={label}>
+    <h3>{label}: {evidence.label}</h3><p>{result.message}</p>
     <dl>
       <dt>Endpoint</dt><dd>{result.checks.endpoint ? 'доступен' : 'недоступен'}</dd>
       <dt>Идентичность и provenance</dt><dd>{result.checks.identity ? 'подтверждены' : 'не подтверждены'}</dd>
@@ -56,8 +57,8 @@ export function ModelSetup({ evidence, reviewer, onInspectModelProfile, onQualif
   return <section aria-label="Настройка модели">
     <h2>Локальная модель</h2>
     <p>Запрошенная модель: {evidence.label}</p>
-    <EvidenceView role="Планировщик" evidence={evidence} />
-    {reviewer && <EvidenceView role="Рецензент изображений" evidence={reviewer} />}
+    <EvidenceView role="planner" evidence={evidence} />
+    {reviewer && <EvidenceView role="reviewer" evidence={reviewer} />}
     {!reviewer && <p>Рецензент изображений не выбран. Автоматическая проверка изображений недоступна.</p>}
     {selection && <p>{selection.automatedVisual ? 'Автоматическая проверка изображений доступна' : 'Автоматическая проверка изображений недоступна'}</p>}
     <p>Для каждого изображения рецензент получает новый контекст и реальные изображения. Публикация требует три положительных визуальных решения.</p>

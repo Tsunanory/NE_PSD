@@ -20,7 +20,7 @@ export function validateModelTrigger(provider: ModelProfile['provider'], trigger
   return { allowed: true, reason: 'interactive model use only' };
 }
 
-export function evaluateModelSetup(evidence: ModelEvidence) {
+export function evaluateModelSetup(evidence: ModelEvidence, role: 'planner' | 'reviewer' = 'reviewer') {
   const profile = evidence.selectedProfile;
   const provenance = profile?.provenance;
   const identity = evidence.label === 'Qwen3.8-27B' && evidence.modelId === 'Qwen3.8-27B' &&
@@ -41,15 +41,16 @@ export function evaluateModelSetup(evidence: ModelEvidence) {
   const qualified = evidence.qualification?.qualified === true && evidence.qualification.errors.length === 0 &&
     evidence.qualification.evidencePaths.length > 0 && !evidence.synthetic;
   const ready = evidence.endpointReachable && identity && capabilities.jsonSchema && capabilities.tools &&
-    capabilities.vision && benchmark && evidence.reviewGateAvailable && qualified;
+    (role === 'planner' || capabilities.vision) && benchmark &&
+    (role === 'planner' || evidence.reviewGateAvailable) && qualified;
   const automatedVisual = ready && capabilities.vision;
-  const message = !capabilities.vision ? 'Модель не проверяет изображение визуально' :
+  const message = role === 'reviewer' && !capabilities.vision ? 'Модель не проверяет изображение визуально' :
     !ready ? 'Указанная модель не подтверждена. Обработка недоступна' : `${evidence.label} квалифицирована для настроенного режима`;
   return { ready, automatedVisual, evidence, message, checks: { endpoint: evidence.endpointReachable, identity, capabilities, benchmark, reviewGate: evidence.reviewGateAvailable, qualified } };
 }
 
 export function evaluateModelSelection(planner: ModelEvidence, reviewer: ModelEvidence) {
-  const plannerResult = evaluateModelSetup(planner);
-  const reviewerResult = evaluateModelSetup(reviewer);
+  const plannerResult = evaluateModelSetup(planner, 'planner');
+  const reviewerResult = evaluateModelSetup(reviewer, 'reviewer');
   return { ready: plannerResult.ready && reviewerResult.ready, automatedVisual: plannerResult.ready && reviewerResult.automatedVisual, planner: plannerResult, reviewer: reviewerResult };
 }

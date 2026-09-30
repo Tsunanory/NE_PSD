@@ -1,10 +1,14 @@
-import { app, BrowserWindow } from 'electron';
-import { resolve, dirname } from 'node:path';
+import { app, BrowserWindow, dialog } from 'electron';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { secureWebPreferences } from './window-config.js';
 import { installWindowPolicy } from './window.js';
 import { registerIpc } from './ipc.js';
 import { composeServices, type DesktopServices } from './services.js';
+import { RootRegistry } from './paths.js';
+import { SetupController, type PickerKind } from './setup-controller.js';
+import { JobSessionController } from './job-session-controller.js';
+import { verifyPackagedResources } from './packaged-runtime.js';
 
 let window: BrowserWindow | null = null;
 export function createMainWindow(mode: 'development' | 'production' = 'production'): BrowserWindow {
@@ -16,14 +20,58 @@ export function createMainWindow(mode: 'development' | 'production' = 'productio
   window = created;
   return created;
 }
+async function nativeSelect(kind: PickerKind): Promise<string | null> {
+  const result = await dialog.showOpenDialog({
+    title: kind === 'template' ? 'Выберите PSD-шаблон' : kind === 'assets' ? 'Выберите папку изображений' : 'Выберите папку результатов',
+    properties: kind === 'template' ? ['openFile'] : ['openDirectory'],
+    ...(kind === 'template' ? { filters: [{ name: 'PSD', extensions: ['psd'] }] } : {}),
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+}
 export function startDesktop(mode: 'development' | 'production' = 'production', injected?: DesktopServices, explicitFake = false): void {
   const services = composeServices(mode, injected, explicitFake);
   const lock = app.requestSingleInstanceLock();
   if (!lock) { app.quit(); return; }
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
-  const disposeIpc = registerIpc(services, mode, () => window?.webContents ?? null);
-  void app.whenReady().then(() => createMainWindow(mode));
-  app.on('before-quit', disposeIpc);
+  let disposeIpc: () => void = () => undefined;
+  let sessions: JobSessionController | null = null;
+  let closingApproved = false;
+  let closingPending = false;
+  void app.whenReady().then(async () => {
+    if (mode === 'production' && app.isPackaged) await verifyPackagedResources(process.resourcesPath);
+    if (!services.models || !services.reviewPolicySha256) throw new Error('setup metadata adapter unavailable');
+    const roots = new RootRegistry();
+    sessions = new JobSessionController({
+      jobs: services.jobs, userDataDirectory: join(app.getPath('userData'), 'jobs'),
+      developmentFake: mode === 'development' && services.developmentFake === true && !app.isPackaged,
+      ...(services.evidenceAdapter ? { evidenceAdapter: services.evidenceAdapter } : {}),
+    });
+    const setup = new SetupController({
+      setup: services.setup, jobs: services.jobs, roots,
+      pickers: { select: nativeSelect }, userDataDirectory: join(app.getPath('userData'), 'setup'),
+      models: services.models, reviewPolicySha256: services.reviewPolicySha256,
+      developmentFake: mode === 'development' && services.developmentFake === true && !app.isPackaged,
+      ...(services.previews ? { previews: services.previews } : {}),
+      ...(services.prepareLinkedCopy ? { prepareLinkedCopy: services.prepareLinkedCopy } : {}),
+    });
+    disposeIpc = registerIpc(services, mode, () => window?.webContents ?? null, roots, setup, sessions);
+    createMainWindow(mode);
+  }).catch(() => { console.error('DESKTOP_BOOTSTRAP_BLOCKED'); app.quit(); });
+  app.on('before-quit', (event) => {
+    if (!sessions || closingApproved) { disposeIpc(); return; }
+    event.preventDefault();
+    if (closingPending) return;
+    closingPending = true;
+    void sessions.safeClose().then(() => {
+      closingApproved = true;
+      disposeIpc();
+      app.quit();
+    }).catch(() => {
+      closingPending = false;
+      window?.show();
+      console.error('DESKTOP_CLOSE_BLOCKED');
+    });
+  });
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 }
 if (process.env.NODE_ENV !== 'test') {
