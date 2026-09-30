@@ -1,2 +1,10 @@
-import { existsSync, mkdirSync, cpSync } from 'node:fs'; import { resolve } from 'node:path';
-const root = resolve(new URL('..', import.meta.url).pathname); const manifest = JSON.parse(await import('node:fs/promises').then(({ readFile }) => readFile(resolve(root, 'packaging/runtime-manifest.json'), 'utf8'))); if (manifest.status !== 'ready' || manifest.missing.length) throw new Error(`BLOCKED — runtime manifest is not ready: ${manifest.missing.join('; ')}`); const vendor = resolve(root, 'packaging/vendor'); if (!existsSync(vendor)) throw new Error('BLOCKED — packaging/vendor is absent; no network fetch is permitted'); const staged = resolve(root, 'packaging/staged/win32-x64'); mkdirSync(staged, { recursive: true }); cpSync(vendor, staged, { recursive: true, errorOnExist: false }); console.log(`staged preverified resources at ${staged}`);
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { prepareResources } from './runtime-manifest.mjs';
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+try {
+  const manifest = JSON.parse(readFileSync(join(root, 'packaging/runtime-manifest.json'), 'utf8'));
+  const result = prepareResources(manifest, resolve(root, 'packaging/vendor'), resolve(root, 'packaging/staged/win32-x64'));
+  console.log(JSON.stringify(result));
+} catch (error) { console.error(error.message); process.exitCode = 2; }

@@ -1,6 +1,6 @@
-!macro customInstall
-; Per-user NSIS install. User data and selected outputs remain outside resources.
-!macroend
 !macro customUnInstall
-; Removal of settings/data is an explicit user choice, never automatic.
+  MessageBox MB_YESNO|MB_ICONQUESTION "Remove NE PSD settings from this Windows account? Jobs, evidence, templates and output folders will be retained." IDNO keepSettings
+  RMDir /r "$APPDATA\\ne-psd-desktop\\settings"
+  RMDir /r "$LOCALAPPDATA\\ne-psd-desktop\\settings"
+  keepSettings:
 !macroend

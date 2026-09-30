@@ -1,15 +1,25 @@
 appId: com.ne-psd.desktop
 productName: NE PSD
+executableName: NE PSD
 asar: true
 asarUnpack:
-  - resources/runtime/**
+  - "**/*.node"
+  - "**/@img/**"
+  - "**/sharp/**"
+files:
+  - "dist/**"
+extraResources:
+  - from: "../../packaging/staged/win32-x64"
+    to: "."
 win:
   target:
-    - nsis
-  arch:
-    - x64
+    - target: nsis
+      arch: [x64]
+  artifactName: "NE PSD Setup ${version}.exe"
 nsis:
   oneClick: false
   perMachine: false
+  allowElevation: false
   allowToChangeInstallationDirectory: true
-  artifactName: NE PSD Setup.exe
+  include: "../../packaging/windows/installer.nsh"
+  deleteAppDataOnUninstall: false

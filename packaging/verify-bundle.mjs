@@ -1,1 +1,10 @@
-import { existsSync } from 'node:fs'; import { resolve } from 'node:path'; const root = resolve(new URL('..', import.meta.url).pathname); const manifest = JSON.parse(await import('node:fs/promises').then(({ readFile }) => readFile(resolve(root, 'packaging/runtime-manifest.json'), 'utf8'))); if (manifest.status !== 'ready') { console.error('BLOCKED — runtime manifest status is blocked'); process.exitCode = 2; } else if (!existsSync(resolve(root, 'packaging/staged/win32-x64'))) { console.error('BLOCKED — staged runtime is missing'); process.exitCode = 2; } else console.log('bundle verification passed');
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { verifyBundle } from './runtime-manifest.mjs';
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+try {
+  const manifest = JSON.parse(readFileSync(join(root, 'packaging/runtime-manifest.json'), 'utf8'));
+  const staged = process.argv[2] ? resolve(process.argv[2]) : resolve(root, 'packaging/staged/win32-x64');
+  console.log(JSON.stringify(verifyBundle(manifest, staged)));
+} catch (error) { console.error(error.message); process.exitCode = 2; }
