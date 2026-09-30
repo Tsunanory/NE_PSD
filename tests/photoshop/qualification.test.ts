@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -27,6 +27,7 @@ async function setup(overrides: Partial<QualificationAdapter> = {}) {
   const adapter: QualificationAdapter = {
     lock: { runExclusive: async (_id, fn) => fn() }, capabilities: async () => caps,
     createWorkingCopy: async ({ masterPath }) => { const path = join(evidence, 'prepared.psd'); await copyFile(masterPath, path); const sha = createHash('sha256').update('master-bytes').digest('hex'); return { path, closure: [{ originalPath: masterPath, sha256: sha }], verifyOriginals: async () => true, cleanup: async () => { copyCleanups += 1; } }; },
+    preparedLinks: { readLinks: async (path) => ({ sourceSha256: createHash('sha256').update(await readFile(path)).digest('hex'), complete: true, links: [] }) },
     snapshot: async (label) => ({ label, actual: true }), prepare: async ({ workingTemplatePath }) => { await writeFile(workingTemplatePath, 'prepared-bytes'); return { changed: true }; }, savePreparedCopy: async () => ({ acknowledged: true }), reopenPreparedCopy: async () => ({ acknowledged: true }), resolveSelectors: async () => ({ ...proof, preparedSha256: createHash('sha256').update('prepared-bytes').digest('hex') }),
     verifyGeometry: async () => ({ passed: true, evidencePath: await evidenceFile('checks/geometry.json', { measured: true }) }), verifyLinkage: async () => ({ passed: true, evidencePath: await evidenceFile('checks/linkage.json', { closure: true }) }), verifyClipping: async () => ({ passed: true, evidencePath: await evidenceFile('checks/clipping.json', { exact: true }) }),
     inspectClipping: async (input, reference) => ({ inputId: selectorId(input), referenceId: selectorId(reference), parentId: 'parent', referenceParentId: 'parent', inputIndex: 0, referenceIndex: 1, clipped: true, baseId: selectorId(reference), kind: 'smartObject', mask: { holes: true }, effects: { shadow: true }, outerTransform: { scale: 1 }, maskSemantics: 'alpha', layerCount: 2, uniqueNames: true }),
@@ -40,6 +41,105 @@ function request(fixture: Awaited<ReturnType<typeof setup>>) { return { schemaVe
 const options = (fixture: Awaited<ReturnType<typeof setup>>) => ({ adapter: fixture.adapter, approvedCapability: true as const, approvedTemplateRoots: [fixture.root], approvedEvidenceRoots: [fixture.root] });
 
 describe('qualification real evidence boundary', () => {
+  it('retains measured prepared bytes after scratch cleanup', async () => {
+    const fixture = await setup();
+    const scratch = join(fixture.evidence, 'scratch');
+    fixture.adapter.createWorkingCopy = async ({ masterPath }) => {
+      await mkdir(scratch);
+      const path = join(scratch, 'template.psd');
+      await copyFile(masterPath, path);
+      return { path, closure: [{ originalPath: masterPath, sha256: createHash('sha256').update('master-bytes').digest('hex') }],
+        verifyOriginals: async () => true, cleanup: async () => rm(scratch, { recursive: true }) };
+    };
+    const result = await qualify(request(fixture), options(fixture));
+    expect(result.status).toBe('qualified');
+    expect(result.candidate?.template.relativePath).toBe('prepared/template.psd');
+    const retained = await readFile(join(fixture.evidence, result.candidate!.template.relativePath));
+    expect(createHash('sha256').update(retained).digest('hex')).toBe(result.candidate?.template.sha256);
+    expect(retained.toString()).toBe('prepared-bytes');
+    expect((await readFile(fixture.master)).toString()).toBe('master-bytes');
+    await expect(readFile(join(scratch, 'template.psd'))).rejects.toThrow();
+  });
+
+  it('blocks a stale prepared destination rather than overwriting it', async () => {
+    const fixture = await setup();
+    await mkdir(join(fixture.evidence, 'prepared'));
+    const stale = join(fixture.evidence, 'prepared', 'prepared.psd');
+    await writeFile(stale, 'stale');
+    const result = await qualify(request(fixture), options(fixture));
+    expect(result.status).toBe('blocked');
+    expect((await readFile(stale)).toString()).toBe('stale');
+  });
+
+  it('blocks a prepared file changed during cleanup', async () => {
+    const fixture = await setup();
+    fixture.adapter.cleanup = async () => { await writeFile(join(fixture.evidence, 'prepared', 'prepared.psd'), 'tampered'); };
+    const result = await qualify(request(fixture), options(fixture));
+    expect(result.status).toBe('blocked');
+    expect(result.candidate).toBeNull();
+  });
+
+  it('blocks linked dependencies without a retained closure proof', async () => {
+    const fixture = await setup();
+    const original = fixture.adapter.createWorkingCopy;
+    const dependency = join(fixture.root, 'dependency.psb');
+    await writeFile(dependency, 'dependency');
+    fixture.adapter.createWorkingCopy = async (input) => {
+      const copy = await original(input);
+      return { ...copy, closure: [...copy.closure, { originalPath: dependency, sha256: createHash('sha256').update('dependency').digest('hex') }] };
+    };
+    fixture.adapter.preparedLinks = { readLinks: async (path) => ({
+      sourceSha256: createHash('sha256').update(await readFile(path)).digest('hex'), complete: true,
+      links: path.endsWith('prepared.psd') ? [{ sourceKind: 'linked', path: dependency }] : [],
+    }) };
+    const result = await qualify(request(fixture), options(fixture));
+    expect(result.status).toBe('blocked');
+    expect(result.candidate).toBeNull();
+  });
+
+  it('retains a relinked prepared dependency closure after scratch cleanup', async () => {
+    const fixture = await setup();
+    const scratch = join(fixture.evidence, 'scratch');
+    const originalDependency = join(fixture.root, 'dependency.psb');
+    const scratchDependency = join(scratch, 'dependency.psb');
+    await writeFile(originalDependency, 'dependency-bytes');
+    fixture.adapter.createWorkingCopy = async ({ masterPath }) => {
+      await mkdir(scratch);
+      const path = join(scratch, 'template.psd');
+      await copyFile(masterPath, path);
+      await copyFile(originalDependency, scratchDependency);
+      return { path, closure: [
+        { originalPath: masterPath, sha256: createHash('sha256').update('master-bytes').digest('hex') },
+        { originalPath: originalDependency, sha256: createHash('sha256').update('dependency-bytes').digest('hex') },
+      ], verifyOriginals: async () => true, cleanup: async () => rm(scratch, { recursive: true }) };
+    };
+    fixture.adapter.resolveSelectors = async ({ workingTemplatePath }) => ({ ...fixture.proof,
+      preparedSha256: createHash('sha256').update(await readFile(workingTemplatePath)).digest('hex') });
+    fixture.adapter.preparedLinks = {
+      readLinks: async (path) => {
+        const bytes = await readFile(path);
+        const value = bytes.toString();
+        const links = value === 'prepared-bytes' ? [{ sourceKind: 'linked' as const, path: scratchDependency }]
+          : value.startsWith('prepared-linked:') ? [{ sourceKind: 'linked' as const, path: value.slice('prepared-linked:'.length) }] : [];
+        return { sourceSha256: createHash('sha256').update(bytes).digest('hex'), complete: true, links };
+      },
+      relink: async (parent, original, copy) => {
+        await writeFile(parent, `prepared-linked:${copy}`);
+        return { acknowledged: true, parentPath: parent, originalSource: original, jobOwnedSource: copy };
+      },
+    };
+    const result = await qualify(request(fixture), options(fixture));
+    expect(result.status).toBe('qualified');
+    expect(result.candidate?.template.relativePath).toBe('prepared/template.psd');
+    const retained = join(fixture.evidence, 'prepared/template.psd');
+    const linked = (await readFile(retained, 'utf8')).slice('prepared-linked:'.length);
+    expect(linked.startsWith(join(await realpath(fixture.evidence), 'prepared'))).toBe(true);
+    expect((await readFile(linked)).toString()).toBe('dependency-bytes');
+    expect(result.evidencePaths).toContain(linked.slice((await realpath(fixture.evidence)).length + 1));
+    expect((await readFile(fixture.master)).toString()).toBe('master-bytes');
+    expect((await readFile(originalDependency)).toString()).toBe('dependency-bytes');
+    await expect(readFile(scratchDependency)).rejects.toThrow();
+  });
   it('keeps canonical root containment case-sensitive', async () => { expect(withinCanonicalRoot('/approved/SAFE', '/approved/safe/asset.psd')).toBe(false); const fixture = await setup(); const upper = join(fixture.root, 'SAFE'); const lower = join(fixture.root, 'safe'); await mkdir(upper); await mkdir(lower).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; }); const a = await stat(upper); const b = await stat(lower); if (a.dev !== b.dev || a.ino !== b.ino) { const source = join(lower, 'asset.psd'); await writeFile(source, 'master-bytes'); const result = await qualify({ ...request(fixture), workingTemplatePath: source }, { ...options(fixture), approvedTemplateRoots: [upper] }); expect(result.status).toBe('blocked'); expect(result.errors[0]).toMatchObject({ code: 'PATH_ESCAPE' }); expect(fixture.counters()).toMatchObject({ txCleanups: 0, copyCleanups: 0 }); } });
   it('qualifies only after decoding three asymmetric PNG variants and preserving the master', async () => { const fixture = await setup(); const result = await qualify(request(fixture), options(fixture)); expect(result.status).toBe('qualified'); expect(result.evidencePaths.filter((path) => path.startsWith('variants/'))).toHaveLength(3); expect(QualificationResultSchema.safeParse(result).success).toBe(true); expect(fixture.counters()).toEqual({ writes: 1, txCleanups: 1, copyCleanups: 1 }); expect(result.candidate).not.toHaveProperty('qualificationId'); });
   it('blocks sentinel qualification without a true pre-mutation baseline and correspondence proof', async () => { const fixture = await setup({ captureSentinelBaseline: undefined, verifySentinelCorrespondence: undefined }); const result = await qualify(request(fixture), options(fixture)); expect(result.status).toBe('blocked'); expect(result.errors[0]).toMatchObject({ code: 'SENTINEL_BASELINE_MISSING' }); });

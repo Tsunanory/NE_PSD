@@ -1,4 +1,5 @@
-import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import sharp from 'sharp';
@@ -19,7 +20,7 @@ import {
   type Rect,
 } from '@ne-psd/contracts';
 import type { SessionLock } from './session-lock.js';
-import { sha256 as hashFile } from './working-copy.js';
+import { createWorkingCopy, sha256 as hashFile, type LinkedResource, type QualifiedLinkOperation, type WorkingCopy } from './working-copy.js';
 
 type LayerRef = string | { id?: string; [key: string]: unknown };
 type CheckEvidence = { passed: boolean; evidencePath: string; details?: unknown };
@@ -114,11 +115,16 @@ export type QualificationObservation = {
 };
 export type ClosureEntry = { originalPath: string; sha256: string };
 export type WorkingCopyResult = { path: string; closure: readonly ClosureEntry[]; noChangeProof?: { acknowledged: true }; verifyOriginals: () => Promise<boolean>; cleanup: () => Promise<void> };
+export type PreparedLinkOperation = Omit<QualifiedLinkOperation, 'readLinks'> & {
+  /** Qualified read-only inventory, complete and bound to the bytes scanned. */
+  readLinks: (path: string) => Promise<{ sourceSha256: string; complete: true; links: readonly LinkedResource[] }>;
+};
 export type RuntimeVisibility = { visibleVariantIds: readonly ('1' | '2' | '3')[] };
 export type QualificationAdapter = {
   lock: Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation'>>;
   capabilities: () => Promise<unknown>;
   createWorkingCopy: (input: { masterPath: string; evidenceDirectory: string; signal?: AbortSignal }) => Promise<WorkingCopyResult>;
+  preparedLinks?: PreparedLinkOperation;
   snapshot: (label: string) => Promise<unknown>;
   prepare?: (input: { workingTemplatePath: string; evidenceDirectory: string; signal?: AbortSignal }) => Promise<QualificationObservation>;
   savePreparedCopy?: (path: string) => Promise<unknown>;
@@ -253,7 +259,55 @@ function validSelectorProof(proof: SelectorProof, preparedSha256: string, inspec
   if (proof.variants.some((variant) => !proposalVariants.has(variant.id) || proposalVariants.get(variant.id)!.groupCandidateId !== variant.candidateId || !same(variant.group, byId.get(variant.candidateId)))) return false;
   return new Set(proof.variants.map((variant) => variant.id)).size === 3;
 }
-function fileRef(path: string, sha256: string, rootId: string): FileRef { return { rootId, relativePath: `prepared/${path.split(/[\\/]/).at(-1) ?? 'template.psd'}`, sha256 }; }
+function fileRef(path: string, sha256: string, rootId: string): FileRef { return { rootId, relativePath: `prepared/${basename(path)}`, sha256 }; }
+
+async function retainPreparedCopy(evidenceDirectory: string, scratchPath: string, sha256: string, links: PreparedLinkOperation): Promise<{ path: string; closure: WorkingCopy; operation: QualifiedLinkOperation }> {
+  if (!(await canonicalExistingInside(evidenceDirectory, scratchPath))) throw new QualificationError('PREPARED_SOURCE_INVALID', 'prepared scratch file is not a confined regular file');
+  const canonicalEvidenceRoot = await realpath(evidenceDirectory);
+  const canonicalScratchPath = await realpath(scratchPath);
+  try { await lstat(resolve(canonicalEvidenceRoot, 'prepared')); throw new QualificationError('PREPARED_DESTINATION_EXISTS', 'prepared output directory must be fresh'); }
+  catch (cause) { if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause; }
+  const qualified: QualifiedLinkOperation = {
+    readLinks: async (path) => {
+      const before = await hashFile(path);
+      let scan: Awaited<ReturnType<PreparedLinkOperation['readLinks']>>;
+      try { scan = await links.readLinks(path); }
+      catch (cause) { throw new QualificationError('PREPARED_LINK_SCAN_UNCERTAIN', `qualified link scan failed: ${String(cause)}`, 'ambiguousState'); }
+      if (scan?.complete !== true || scan.sourceSha256 !== before || !Array.isArray(scan.links) || await hashFile(path) !== before) {
+        throw new QualificationError('PREPARED_LINK_SCAN_UNCERTAIN', 'prepared link inventory is incomplete or not bound to actual bytes', 'ambiguousState');
+      }
+      return scan.links;
+    },
+    ...(links.relink ? { relink: links.relink.bind(links) } : {}),
+    ...(links.embed ? { embed: links.embed.bind(links) } : {}),
+  };
+  const closure = await createWorkingCopy({ masterPath: canonicalScratchPath, trustedRoot: canonicalEvidenceRoot,
+    attemptRoot: resolve(canonicalEvidenceRoot, 'prepared'), expectedMasterSha256: sha256, operation: qualified });
+  const path = resolve(canonicalEvidenceRoot, 'prepared', basename(canonicalScratchPath));
+  await copyFile(closure.masterPath, path, constants.COPYFILE_EXCL);
+  const rootCopy = closure.closure.find((entry) => entry.copyPath === closure.masterPath);
+  if (!rootCopy || await hashFile(path) !== rootCopy.copyAfterSha256) throw new QualificationError('PREPARED_RETAIN_MISMATCH', 'retained candidate differs from verified prepared copy', 'ambiguousState');
+  await verifyRetainedCopy(canonicalEvidenceRoot, path, closure, qualified);
+  return { path, closure, operation: qualified };
+}
+
+async function verifyRetainedCopy(evidenceDirectory: string, path: string, closure: WorkingCopy, operation: QualifiedLinkOperation): Promise<void> {
+  const preparedRoot = resolve(await realpath(evidenceDirectory), 'prepared');
+  const rootCopy = closure.closure.find((entry) => entry.copyPath === closure.masterPath);
+  if (!rootCopy) throw new QualificationError('PREPARED_RETAIN_MISMATCH', 'retained master is absent from closure', 'ambiguousState');
+  const known = new Map(closure.closure.map((entry) => [entry.copyPath, entry.copyAfterSha256]));
+  known.set(path, rootCopy.copyAfterSha256);
+  for (const [member, expected] of known) {
+    if (!(await canonicalExistingInside(preparedRoot, member)) || await hashFile(member) !== expected) throw new QualificationError('PREPARED_RETAIN_MISMATCH', 'retained prepared closure member changed or vanished', 'ambiguousState');
+    const edges = await operation.readLinks(member);
+    for (const edge of edges) {
+      if (edge.sourceKind === 'embedded') continue;
+      if (edge.sourceKind !== 'linked' || !edge.path) throw new QualificationError('PREPARED_LINK_UNKNOWN', 'retained prepared copy has unknown linkage', 'ambiguousState');
+      const target = await realpath(isAbsolute(edge.path) ? edge.path : resolve(dirname(member), edge.path));
+      if (!within(preparedRoot, target) || !known.has(target)) throw new QualificationError('PREPARED_LINK_ESCAPE', 'retained prepared copy links outside its verified closure', 'ambiguousState');
+    }
+  }
+}
 function candidate(request: QualificationRequest, template: FileRef, selectors: SelectorProof, capabilities: CapabilityReport): unknown {
   return TemplateCandidateSchema.parse({ schemaVersion: 1, profileId: `candidate-${request.inspection.inspectionId}`, template, backendId: capabilities.backendId, toolSchemaSha256: capabilities.toolSchemaSha256, targets: selectors.targets.map((target) => ({ target: target.target, reference: target.reference, input: target.input })), fitMode: request.proposal.fitMode, output: request.proposal.output, variants: selectors.variants.map((variant) => ({ id: variant.id, group: variant.group })) });
 }
@@ -318,9 +372,26 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       const propagation = await propagateSentinelByIdentity({ getContentIdentity: adapter.getContentIdentity, writeContent: adapter.writeContent }, selectors.targets.map((target) => target.targetCandidateId), sentinelPath, signal); if (propagation.writes.length === 0) throw new QualificationError('CONTENT_WRITES_MISSING', 'no content resource was written'); checkpoint(signal); ack(await adapter.savePropagation(), 'savePropagation'); checkpoint(signal); ack(await adapter.reopenPropagation(), 'reopenPropagation'); checkpoint(signal); const identityPath = await writeEvidence(request.evidenceDirectory, 'checks/identity.json', propagation); evidencePaths.push(identityPath); checks.push({ id: 'identity', passed: true, evidencePath: identityPath });
       const hashes = new Map<string, string>(); for (const variant of ['1', '2', '3'] as const) { checkpoint(signal); ack(await adapter.setVariantVisibility(variant), 'setVariantVisibility'); checkpoint(signal); const visibility = await adapter.readVariantVisibility(); if (!visibility || visibility.visibleVariantIds.length !== 1 || visibility.visibleVariantIds[0] !== variant) throw new QualificationError('VARIANT_VISIBILITY_INVALID', `variant ${variant} visibility did not verify`); const result = await adapter.exporter({ variantId: variant, sentinelPath, evidenceDirectory: request.evidenceDirectory, workingTemplatePath: copy.path }); checkpoint(signal); if (!result || typeof result.path !== 'string') throw new QualificationError('EXPORT_EVIDENCE_INVALID', `variant ${variant} exporter did not return a file path`); const variantPath = isAbsolute(result.path) ? result.path : resolve(request.evidenceDirectory, result.path); if (!(await canonicalExistingInside(request.evidenceDirectory, variantPath))) throw new QualificationError('EXPORT_PATH_ESCAPE', `variant ${variant} path escaped evidence root or traversed a symlink`); const canonicalEvidenceRoot = await realpath(request.evidenceDirectory); const canonicalVariantPath = await realpath(variantPath); const relativePath = relative(canonicalEvidenceRoot, canonicalVariantPath).replaceAll('\\', '/'); const digest = await inspectExport(canonicalVariantPath, variant); if (hashes.has(digest)) throw new QualificationError('VARIANT_DUPLICATE', `variant ${variant} is identical to another variant`); hashes.set(digest, variant); const outputBytes = await readFile(canonicalVariantPath); const outputSha256 = createHash('sha256').update(outputBytes).digest('hex'); for (const target of selectors.targets) { const targetBaseline = baselineByTarget.get(target.targetCandidateId); if (!targetBaseline) throw new QualificationError('SENTINEL_BASELINE_INVALID', `variant ${variant} has no intended target region for ${target.targetCandidateId}`); const correspondence = await adapter.verifySentinelCorrespondence({ variantId: variant, sentinelPath, outputPath: canonicalVariantPath, baseline: targetBaseline }); if (!correspondence || correspondence.passed !== true || correspondence.targetId !== target.targetCandidateId || !same(correspondence.region, targetBaseline.region) || correspondence.baselinePath !== targetBaseline.path || correspondence.baselineBytes !== targetBaseline.bytes || correspondence.baselineSha256 !== targetBaseline.sha256 || correspondence.outputPath !== canonicalVariantPath || correspondence.outputBytes !== outputBytes.byteLength || correspondence.outputSha256 !== outputSha256 || !(await canonicalExistingInside(request.evidenceDirectory, correspondence.evidencePath))) throw new QualificationError('SENTINEL_CORRESPONDENCE_INVALID', `variant ${variant} source-to-output target correspondence was not independently verified for ${target.targetCandidateId}`); evidencePaths.push(correspondence.evidencePath); checks.push({ id: `sentinel-correspondence-${variant}-${target.targetCandidateId}`, passed: true, evidencePath: correspondence.evidencePath }); } evidencePaths.push(relativePath); checks.push({ id: `variant-${variant}`, passed: true, evidencePath: relativePath }); }
       const originalAfter = await hashFile(request.workingTemplatePath); const closureUnchanged = (await Promise.all(copy.closure.map(async (entry) => (await hashFile(entry.originalPath)) === entry.sha256))).every(Boolean); const originalsVerified = await copy.verifyOriginals(); if (!originalsVerified || !closureUnchanged || originalAfter !== originalMaster) throw new QualificationError('SOURCE_MUTATED', 'master or linked source verification failed'); const sourcePath = await writeEvidence(request.evidenceDirectory, 'checks/source-integrity.json', { master: { path: request.workingTemplatePath, before: originalMaster, after: originalAfter }, closure: copy.closure }); evidencePaths.push(sourcePath); checks.push({ id: 'source-integrity', passed: true, evidencePath: sourcePath });
-      await clean(); const post = await adapter.snapshot('post'); evidencePaths.push(await writeEvidence(request.evidenceDirectory, 'snapshots/post.json', post)); checks.push({ id: 'cleanup', passed: true, evidencePath: 'snapshots/post.json' });
+      if (!adapter.preparedLinks) throw new QualificationError('PREPARED_LINK_CAPABILITY_MISSING', 'byte-bound prepared-link inventory is required before retaining a candidate', 'capability');
+      const retained = await retainPreparedCopy(request.evidenceDirectory, copy.path, preparedSha, adapter.preparedLinks);
+      const retainedSha = await hashFile(retained.path);
+      const retainedSelectors = await adapter.resolveSelectors({ workingTemplatePath: retained.path, inspection: request.inspection, proposal: request.proposal });
+      if (!validSelectorProof(retainedSelectors, retainedSha, request.inspection, request.proposal) ||
+          !same(retainedSelectors.targets, selectors.targets) || !same(retainedSelectors.variants, selectors.variants)) {
+        throw new QualificationError('RETAINED_SELECTOR_PROVENANCE_INVALID', 'retained candidate selectors do not verify against its actual bytes');
+      }
+      await clean();
+      await verifyRetainedCopy(request.evidenceDirectory, retained.path, retained.closure, retained.operation);
+      if (await hashFile(retained.path) !== retainedSha || await hashFile(request.workingTemplatePath) !== originalMaster) {
+        throw new QualificationError('PREPARED_RETAIN_MISMATCH', 'retained candidate or original changed during cleanup', 'ambiguousState');
+      }
+      const retainedRef = fileRef(retained.path, retainedSha, `${request.inspection.template.rootId}:qualification`);
+      evidencePaths.push(retainedRef.relativePath);
+      const canonicalEvidenceRoot = await realpath(request.evidenceDirectory);
+      for (const entry of retained.closure.closure) evidencePaths.push(relative(canonicalEvidenceRoot, entry.copyPath).replaceAll('\\', '/'));
+      const post = await adapter.snapshot('post'); evidencePaths.push(await writeEvidence(request.evidenceDirectory, 'snapshots/post.json', post)); checks.push({ id: 'cleanup', passed: true, evidencePath: 'snapshots/post.json' });
       for (const path of evidencePaths) if (pathEscape(path) || path.startsWith('/') || !(await canonicalExistingInside(request.evidenceDirectory, path))) throw new QualificationError('EVIDENCE_INCOMPLETE', `missing evidence ${path}`);
-      const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, fileRef(copy.path, preparedSha, `${request.inspection.template.rootId}:qualification`), selectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
+      const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, retainedRef, retainedSelectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
     } catch (cause) {
       let barrierFailure: unknown;
       const ambiguous = !(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN');
