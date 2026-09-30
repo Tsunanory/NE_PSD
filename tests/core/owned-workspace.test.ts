@@ -26,13 +26,13 @@ describe('owned attempt workspace', () => {
     await mkdir(join(f.source, 'assets'));
     await writeFile(join(f.source, 'assets', 'source.png'), sourceBytes);
     await writeFile(join(f.source, 'assets', 'linked.psb'), linkedBytes);
-    const workspace = await createAttemptWorkspace(f.output, 'job', 'asset', 1);
+    const workspace = await createAttemptWorkspace(f.output, 'job', 'asset', 1, 'op-1');
     const source = await copyOwnedFile(workspace, f.binding, { rootId: 'input', relativePath: 'assets/source.png', sha256: digest(sourceBytes) }, sourceBytes.length, 'scratch/input/source.png');
     const linked = await copyOwnedFile(workspace, f.binding, { rootId: 'input', relativePath: 'assets/linked.psb', sha256: digest(linkedBytes) }, linkedBytes.length, 'scratch/input/linked.psb');
     expect(await readFile(source)).toEqual(sourceBytes);
     expect(await readFile(linked)).toEqual(linkedBytes);
     expect(await verifyWorkspaceFile(workspace, 'scratch/input/source.png', digest(sourceBytes))).toEqual(sourceBytes);
-    await expect(createAttemptWorkspace(f.output, 'job', 'asset', 1)).rejects.toThrow(/exists|fresh/i);
+    await expect(createAttemptWorkspace(f.output, 'job', 'asset', 1, 'op-1')).rejects.toThrow(/exists|fresh/i);
     await cleanupAttemptWorkspace(workspace);
     await expect(readFile(source)).rejects.toMatchObject({ code: 'ENOENT' });
   });
@@ -42,7 +42,7 @@ describe('owned attempt workspace', () => {
     await mkdir(join(f.source, 'assets'));
     await writeFile(join(f.source, 'assets', 'source.png'), 'changed');
     await symlink(f.directory, join(f.source, 'assets', 'link'));
-    const workspace = await createAttemptWorkspace(f.output, 'job', 'asset', 1);
+    const workspace = await createAttemptWorkspace(f.output, 'job', 'asset', 1, 'op-1');
     await expect(copyOwnedFile(workspace, f.binding, { rootId: 'input', relativePath: 'assets/source.png', sha256: digest(Buffer.from('original')) }, 8, 'scratch/input/source.png')).rejects.toThrow(/digest|changed/i);
     await expect(copyOwnedFile(workspace, f.binding, { rootId: 'input', relativePath: 'assets/link/file.psb', sha256: digest(Buffer.from('data')) }, 4, 'scratch/input/file.psb')).rejects.toThrow(/symlink|escape/i);
   });

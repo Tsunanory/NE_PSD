@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -137,6 +137,79 @@ describe('V2 render runner', () => {
     expect(f.repository.snapshot(job.jobId).assets[0]).toMatchObject({ status: 'queued', attempt: 0 });
   });
 
+  it('uses a fresh owned generation after settled preparation failure and preserves diagnostics', async () => {
+    const f = await fixture(); const job = f.addJob('resume-preparation');
+    const staging: string[] = []; let prepares = 0;
+    const backend = { prepareOwnedInput: async (request: PrepareRequestV2) => {
+      staging.push(request.stagingDirectory); prepares++;
+      if (prepares === 1) {
+        await mkdir(join(request.stagingDirectory, 'checks'));
+        await writeFile(join(request.stagingDirectory, 'checks/diagnostic.json'), 'first failure');
+        throw Object.assign(new Error('read-only preparation failed'), { code: 'PREPARE_FAILED' });
+      }
+      return f.prepared(request);
+    }, render: f.renderEvidence } as unknown as PhotoshopBackendV2;
+    const options = { repository: f.repository, backend, installationId: 'resume-prep-install', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 };
+    await expect(new RenderRunner(options).render(job, f.asset, 1)).rejects.toMatchObject({ code: 'PREPARE_FAILED' });
+    const result = await new RenderRunner(options).render(job, f.asset, 1);
+    expect(staging).toHaveLength(2); expect(staging[1]).not.toBe(staging[0]);
+    expect(result.workspace.root).toBe(staging[1]);
+    expect(await readFile(join(staging[0]!, 'checks/diagnostic.json'), 'utf8')).toBe('first failure');
+    expect(f.repository.snapshot(job.jobId).assets[0]).toMatchObject({ status: 'rendering', attempt: 1 });
+  });
+
+  it('does not remove or reuse a preparation workspace while its producer settles late', async () => {
+    const f = await fixture(); const firstJob = f.addJob('late-prep-first'); const secondJob = f.addJob('late-prep-second');
+    let entered!: () => void; const enteredPromise = new Promise<void>((resolve) => { entered = resolve; });
+    let finish!: () => void; const release = new Promise<void>((resolve) => { finish = resolve; });
+    let firstStage = '';
+    const backend = { prepareOwnedInput: async (request: PrepareRequestV2) => {
+      firstStage = request.stagingDirectory; entered(); await release;
+      await mkdir(join(firstStage, 'checks'));
+      await writeFile(join(firstStage, 'checks/late.json'), 'late diagnostic');
+      return f.prepared(request);
+    }, render: f.renderEvidence } as unknown as PhotoshopBackendV2;
+    const options = { repository: f.repository, backend, installationId: 'late-prep-install', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 };
+    const parent = new AbortController();
+    const first = new RenderRunner(options).render(firstJob, f.asset, 1, parent.signal);
+    await enteredPromise; parent.abort('cancel');
+    await expect(new RenderRunner(options).render(secondJob, f.asset, 1)).rejects.toMatchObject({ code: 'MUTATION_IN_PROGRESS' });
+    finish(); await expect(first).rejects.toMatchObject({ code: 'CONTROL_REQUESTED' });
+    const lateStage = firstStage;
+    expect(await readFile(join(lateStage, 'checks/late.json'), 'utf8')).toBe('late diagnostic');
+    expect(f.repository.snapshot(firstJob.jobId).assets[0]).toMatchObject({ status: 'queued', attempt: 0 });
+    const retry = await new RenderRunner(options).render(firstJob, f.asset, 1);
+    expect(retry.workspace.root).not.toBe(lateStage);
+    expect(await readFile(join(lateStage, 'checks/late.json'), 'utf8')).toBe('late diagnostic');
+  });
+
+  it('rejects source bytes changed after preparation before any render intent', async () => {
+    const f = await fixture(); const job = f.addJob('source-drift'); let renders = 0;
+    const backend = { prepareOwnedInput: async (request: PrepareRequestV2) => {
+      const manifest = await f.prepared(request);
+      await writeFile(join(f.sourceRoot.canonicalRoot, 'assets/source.png'), 'changed after scan');
+      return manifest;
+    }, render: async () => { renders++; return {}; } } as unknown as PhotoshopBackendV2;
+    const runner = new RenderRunner({ repository: f.repository, backend, installationId: 'source-drift-install', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 });
+    await expect(runner.render(job, f.asset, 1)).rejects.toThrow(/digest|changed/i);
+    expect(renders).toBe(0); expect(f.repository.snapshot(job.jobId).assets[0]).toMatchObject({ status: 'queued', attempt: 0 });
+  });
+
+  it('rejects source-root identity drift between preparation and copy', async () => {
+    const f = await fixture(); const job = f.addJob('root-drift'); let renders = 0;
+    const backend = { prepareOwnedInput: async (request: PrepareRequestV2) => {
+      const manifest = await f.prepared(request);
+      await rename(f.sourceRoot.canonicalRoot, join(f.dir, 'old-input'));
+      await mkdir(join(f.sourceRoot.canonicalRoot, 'assets'), { recursive: true });
+      await writeFile(join(f.sourceRoot.canonicalRoot, 'assets/source.png'), 'source-contents');
+      await writeFile(join(f.sourceRoot.canonicalRoot, 'assets/linked.psb'), 'linked-contents');
+      return manifest;
+    }, render: async () => { renders++; return {}; } } as unknown as PhotoshopBackendV2;
+    const runner = new RenderRunner({ repository: f.repository, backend, installationId: 'root-drift-install', outputRoot: f.outputRoot, resolveSourceRoot: () => f.sourceRoot, renderBudgetBytes: 1024 });
+    await expect(runner.render(job, f.asset, 1)).rejects.toThrow(/root identity/i);
+    expect(renders).toBe(0); expect(f.repository.snapshot(job.jobId).assets[0]).toMatchObject({ status: 'queued', attempt: 0 });
+  });
+
   it('blocks replay after crash intent and rejects in-flight V1 attempts', async () => {
     const f = await fixture(); const job = f.addJob('crash-job');
     f.repository.beginV2Attempt(job.jobId, f.asset.assetId, 1, { installationId: 'crash-install', operationId: 'crashed-op', stagingDirectory: f.workspace(job.jobId), sourceRootIdentity: f.sourceRoot.canonicalRootIdentity });
@@ -194,7 +267,7 @@ describe('V2 render runner', () => {
 
   it('reconciles a persisted blocked attempt after restart without replaying it', async () => {
     const f = await fixture(); const firstJob = f.addJob('restart-first'); const nextJob = f.addJob('restart-next');
-    const workspace = await createAttemptWorkspace(f.outputRoot.canonicalRoot, firstJob.jobId, f.asset.assetId, 1);
+    const workspace = await createAttemptWorkspace(f.outputRoot.canonicalRoot, firstJob.jobId, f.asset.assetId, 1, 'restart-op');
     f.repository.beginV2Attempt(firstJob.jobId, f.asset.assetId, 1, { installationId: 'restart-install', operationId: 'restart-op', stagingDirectory: workspace.root, sourceRootIdentity: f.sourceRoot.canonicalRootIdentity });
     f.repository.markV2Ambiguous(firstJob.jobId, f.asset.assetId, 1, 'restart-op');
     f.repository.transition(firstJob.jobId, f.asset.assetId, 'blocked', { code: 'AMBIGUOUS_STATE', category: 'ambiguousState', message: 'crash', retryable: false, evidencePaths: [] });

@@ -32,15 +32,15 @@ async function verifyWorkspace(workspace: AttemptWorkspace): Promise<void> {
       await realpath(workspace.root) !== workspace.root || filesystemIdentity(workspace.root) !== workspace.rootIdentity) throw new Error('owned workspace identity changed');
 }
 
-export async function createAttemptWorkspace(outputRoot: string, jobId: string, assetId: string, attempt: number): Promise<AttemptWorkspace> {
-  component(jobId, 'job'); component(assetId, 'asset');
+export async function createAttemptWorkspace(outputRoot: string, jobId: string, assetId: string, attempt: number, operationId: string): Promise<AttemptWorkspace> {
+  component(jobId, 'job'); component(assetId, 'asset'); component(operationId, 'operation');
   if (!Number.isInteger(attempt) || attempt < 1 || attempt > 2) throw new Error('unsafe attempt path component');
   const canonicalRoot = await realpath(outputRoot);
   const outputRootIdentity = filesystemIdentity(canonicalRoot);
-  const root = resolve(canonicalRoot, '.ne-psd-staging', jobId, assetId, String(attempt));
+  const root = resolve(canonicalRoot, '.ne-psd-staging', jobId, assetId, String(attempt), operationId);
   if (!root.startsWith(`${canonicalRoot}${sep}`)) throw new Error('attempt workspace escaped output root');
   let path = canonicalRoot;
-  for (const part of ['.ne-psd-staging', jobId, assetId]) {
+  for (const part of ['.ne-psd-staging', jobId, assetId, String(attempt)]) {
     path = join(path, part);
     await rejectSymlinks(canonicalRoot, path);
     await mkdir(path, { recursive: true });

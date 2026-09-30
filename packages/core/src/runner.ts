@@ -55,9 +55,9 @@ export class RenderRunner {
     if (parentSignal?.aborted) throw coded('CANCELLED', 'render cancelled before mutation');
     const sourceRoot = await this.trustedRoot(asset.source.rootId);
     if (asset.source.rootId !== sourceRoot.rootId) throw coded('SOURCE_ROOT_BINDING_MISMATCH', 'selected source root does not match trusted mapping');
-    const workspace = await createAttemptWorkspace(this.options.outputRoot.canonicalRoot, job.jobId, asset.assetId, attempt);
-    if (workspace.outputRootIdentity !== this.options.outputRoot.canonicalRootIdentity) throw coded('OUTPUT_ROOT_BINDING_MISMATCH', 'output root changed before attempt');
     const operationId = randomUUID();
+    const workspace = await createAttemptWorkspace(this.options.outputRoot.canonicalRoot, job.jobId, asset.assetId, attempt, operationId);
+    if (workspace.outputRootIdentity !== this.options.outputRoot.canonicalRootIdentity) throw coded('OUTPUT_ROOT_BINDING_MISMATCH', 'output root changed before attempt');
     const prepareRequest = {
       schemaVersion: 2 as const, jobId: job.jobId, asset, profile: job.profile, attempt,
       operationId, stagingDirectory: workspace.root, scratchDirectory: 'scratch',
