@@ -4,14 +4,15 @@ import { loadFixture } from '@ne-psd/contracts/testing';
 import type { JobSpec } from '@ne-psd/contracts';
 
 describe('desktop independent fakes', () => {
-  it('returns frozen sequence-numbered snapshots and serializes controls', async () => {
+  it('returns contract-shaped frozen snapshots and sequence-numbered events', async () => {
     const spec = loadFixture<JobSpec>('job.interactive.json');
     const service = new FakeJobService();
     const started = await service.start(spec);
-    const first = await service.snapshot(started.jobId);
+    const first = service.events(started.jobId).at(-1)!.sequence;
     await Promise.all([service.pause(started.jobId), service.resume(started.jobId)]);
     const last = await service.snapshot(started.jobId);
-    expect(last.sequence).toBeGreaterThan(first.sequence);
+    expect(service.events(started.jobId).at(-1)!.sequence).toBeGreaterThan(first);
+    expect('sequence' in last).toBe(false);
     expect(Object.isFrozen(last)).toBe(true);
     expect(last.state).toBe('running');
   });

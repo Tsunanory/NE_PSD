@@ -1,5 +1,91 @@
-import { ipcMain } from 'electron'; import { validateRequest, validateResponse, type IpcChannel } from './ipc-schema.js'; import { packagedRendererUrl } from './window.js';
-type Jobs = { validate(spec: unknown): Promise<unknown>; start(spec: unknown): Promise<unknown>; pause(id:string):Promise<unknown>; resume(id:string):Promise<unknown>; cancel(id:string):Promise<unknown>; snapshot(id:string):Promise<unknown>; retryFailed(id:string):Promise<unknown>; visualReview(jobId:string,assetId:string):Promise<unknown>; submitVisualAttestation(requestId:string,decision:'approve'|'reject',notes:string):Promise<unknown> };
-type Setup = { inspectTemplate(path:string, signal:AbortSignal):Promise<unknown>; proposeConfiguration(input:unknown, signal:AbortSignal):Promise<unknown>; qualifyTemplate(input:unknown, signal:AbortSignal):Promise<unknown> };
-export function assertSender(frame:{url:string},mode:'development'|'production'):void { if(!(mode==='development'?/^http:\/\/localhost:\d+\/$/.test(frame.url):frame.url===packagedRendererUrl())) throw new Error('untrusted IPC sender'); }
-export function registerIpc(services:{jobs:Jobs; setup?:Setup},mode:'development'|'production'='production'):void { const register=(channel:IpcChannel,fn:(p:unknown)=>Promise<unknown>|unknown)=>ipcMain.handle(channel,(event,payload)=>{if(!event.senderFrame)throw new Error('missing sender'); assertSender(event.senderFrame,mode); const request=validateRequest(channel,payload); return Promise.resolve(fn(request)).then(validateResponse);}); register('job.validate',p=>services.jobs.validate((p as {spec:unknown}).spec)); register('job.start',p=>services.jobs.start((p as {spec:unknown}).spec)); register('job.pause',p=>services.jobs.pause((p as {jobId:string}).jobId)); register('job.resume',p=>services.jobs.resume((p as {jobId:string}).jobId)); register('job.cancel',p=>services.jobs.cancel((p as {jobId:string}).jobId)); register('job.snapshot',p=>services.jobs.snapshot((p as {jobId:string}).jobId)); register('job.retryFailed',p=>services.jobs.retryFailed((p as {jobId:string}).jobId)); register('job.visualReview',p=>services.jobs.visualReview((p as {jobId:string;assetId:string}).jobId,(p as {jobId:string;assetId:string}).assetId)); register('job.submitVisualAttestation',p=>services.jobs.submitVisualAttestation((p as {requestId:string;decision:'approve'|'reject';notes:string}).requestId,(p as {requestId:string;decision:'approve'|'reject';notes:string}).decision,(p as {requestId:string;decision:'approve'|'reject';notes:string}).notes)); if (services.setup) { const signal = new AbortController().signal; register('setup.inspect',p=>services.setup!.inspectTemplate((p as {templatePath:string}).templatePath,signal)); register('setup.propose',p=>services.setup!.proposeConfiguration(p,signal)); register('setup.qualify',p=>services.setup!.qualifyTemplate(p,signal)); } register('app.diagnostic',()=>({available:false})); }
+import { randomUUID } from 'node:crypto';
+import { ipcMain, type WebContents, type IpcMainInvokeEvent } from 'electron';
+import { ZodError } from 'zod';
+import type { JobSpec } from '@ne-psd/contracts';
+import { validateEvent, validateRequest, validateResponse, type IpcChannel } from './ipc-schema.js';
+import { RootRegistry } from './paths.js';
+import type { DesktopServices } from './services.js';
+import { packagedRendererUrl } from './window.js';
+
+type Mode = 'development' | 'production';
+type Frame = { url: string };
+
+export function assertSender(frame: Frame | null, mode: Mode, sender?: WebContents, trusted?: WebContents): void {
+  if (!frame || (trusted && sender !== trusted) || (sender && frame !== sender.mainFrame)) throw new Error('untrusted IPC sender');
+  const allowed = mode === 'development' ? /^http:\/\/localhost:5173\/$/.test(frame.url) || frame.url === packagedRendererUrl() : frame.url === packagedRendererUrl();
+  if (!allowed) throw new Error('untrusted IPC sender');
+}
+
+function safeError(error: unknown): Error {
+  if (error instanceof Error && error.message === 'untrusted IPC sender') return new Error('IPC_UNTRUSTED_SENDER: Request rejected.');
+  if (error instanceof ZodError) return new Error('IPC_INVALID_DATA: Request or service response did not match its schema.');
+  return new Error('IPC_SERVICE_FAILED: Desktop operation failed.');
+}
+
+export function registerIpc(
+  services: DesktopServices,
+  mode: Mode = 'production',
+  trustedWindow: () => WebContents | null = () => null,
+  roots = new RootRegistry(),
+): () => void {
+  const channels: IpcChannel[] = [];
+  const subscriptions = new Map<string, { sender: WebContents; dispose: () => void }>();
+  const register = (channel: IpcChannel, run: (request: never, event: IpcMainInvokeEvent) => Promise<unknown> | unknown): void => {
+    ipcMain.handle(channel, async (event, payload: unknown) => {
+      try {
+        const trusted = trustedWindow();
+        if (!trusted) throw new Error('untrusted IPC sender');
+        assertSender(event.senderFrame, mode, event.sender, trusted);
+        const request = validateRequest(channel, payload);
+        return validateResponse(channel, await run(request as never, event));
+      } catch (error) { throw safeError(error); }
+    });
+    channels.push(channel);
+  };
+  const checkedSpec = (spec: JobSpec): JobSpec => { roots.assertJobSpec(spec); return spec; };
+  register('job.validate', ({ spec }: { spec: JobSpec }) => services.jobs.validate(checkedSpec(spec)));
+  register('job.start', ({ spec }: { spec: JobSpec }) => services.jobs.start(checkedSpec(spec)));
+  register('job.pause', ({ jobId }: { jobId: string }) => services.jobs.pause(jobId));
+  register('job.resume', ({ jobId }: { jobId: string }) => services.jobs.resume(jobId));
+  register('job.cancel', ({ jobId }: { jobId: string }) => services.jobs.cancel(jobId));
+  register('job.snapshot', ({ jobId }: { jobId: string }) => services.jobs.snapshot(jobId));
+  register('job.retryFailed', ({ jobId }: { jobId: string }) => services.jobs.retryFailed(jobId));
+  register('job.visualReview', ({ jobId, assetId }: { jobId: string; assetId: string }) => services.jobs.visualReview(jobId, assetId));
+  register('job.submitVisualAttestation', ({ requestId, decision, notes }: { requestId: string; decision: 'approve' | 'reject'; notes: string }) => services.jobs.submitVisualAttestation(requestId, decision, notes));
+  register('job.subscribe', ({ jobId }: { jobId: string }, event) => {
+    const subscriptionId = randomUUID();
+    const dispose = services.jobs.subscribe(jobId, (value) => {
+      if (event.sender.isDestroyed()) return;
+      try { event.sender.send('desktop:event', { subscriptionId, event: validateEvent(value) }); }
+      catch { /* invalid service event must never reach renderer */ }
+    });
+    subscriptions.set(subscriptionId, { sender: event.sender, dispose });
+    event.sender.once('destroyed', () => {
+      if (subscriptions.delete(subscriptionId)) dispose();
+    });
+    return { subscriptionId };
+  });
+  register('job.unsubscribe', ({ subscriptionId }: { subscriptionId: string }, event) => {
+    const subscription = subscriptions.get(subscriptionId);
+    if (!subscription || subscription.sender !== event.sender) throw new Error('unknown subscription');
+    subscription.dispose(); subscriptions.delete(subscriptionId);
+  });
+  register('setup.inspect', ({ templateHandle, relativePath }: { templateHandle: string; relativePath: string }) =>
+    services.setup.inspectTemplate(roots.resolve(templateHandle, relativePath, 'template'), new AbortController().signal));
+  register('setup.propose', (request: Parameters<DesktopServices['setup']['proposeConfiguration']>[0]) =>
+    services.setup.proposeConfiguration(request, new AbortController().signal));
+  register('setup.qualify', ({ inspectionId, proposal, workingTemplateHandle, relativePath }: {
+    inspectionId: string; proposal: Parameters<DesktopServices['setup']['qualifyTemplate']>[0]['proposal'];
+    workingTemplateHandle: string; relativePath: string;
+  }) => services.setup.qualifyTemplate({ inspectionId, proposal, workingTemplatePath: roots.resolve(workingTemplateHandle, relativePath, 'working') }, new AbortController().signal));
+  register('setup.inspectModel', ({ profile }: { profile: Parameters<DesktopServices['setup']['inspectModelProfile']>[0] }) =>
+    services.setup.inspectModelProfile(profile, new AbortController().signal));
+  register('setup.qualifyModel', ({ profile }: { profile: Parameters<DesktopServices['setup']['qualifyModelProfile']>[0] }) =>
+    services.setup.qualifyModelProfile(profile, new AbortController().signal));
+  register('app.diagnostic', () => ({ available: false }));
+  return () => {
+    for (const channel of channels) ipcMain.removeHandler(channel);
+    for (const subscription of subscriptions.values()) subscription.dispose();
+    subscriptions.clear();
+  };
+}
