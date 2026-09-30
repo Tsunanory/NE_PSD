@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "jobId": "job-1",
+  "asset": {
+    "assetId": "asset-1",
+    "source": {
+      "rootId": "fixture-root",
+      "relativePath": "assets/source.png",
+      "sha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03"
+    },
+    "sourceBytes": 18
+  },
+  "profile": {
+    "schemaVersion": 1,
+    "profileId": "profile-1",
+    "template": {
+      "rootId": "fixture-root",
+      "relativePath": "assets/template.psd",
+      "sha256": "fb05f9b91299f345f77e8a71cb4155b21d95e0365fc62a248212e6912389f55b"
+    },
+    "profileSha256": "2c720bdd2263ec4da8e836174f91a770b0da9f06bb264c7030fa61e65683c1e7",
+    "qualificationId": "qualification-1",
+    "backendId": "alisaitteke",
+    "toolSchemaSha256": "9c9073a076825a775ae8ca3a8fd31a4cd083762112fc752d2a6ffade64e55d35",
+    "fitMode": "cover",
+    "output": {
+      "format": "jpeg",
+      "quality": 90,
+      "colorSpace": "sRGB",
+      "width": 800,
+      "height": 600
+    },
+    "variants": [
+      {
+        "id": "1",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 1",
+              "kind": "group",
+              "fingerprint": "variant-1-fp"
+            }
+          ]
+        }
+      },
+      {
+        "id": "2",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 2",
+              "kind": "group",
+              "fingerprint": "variant-2-fp"
+            }
+          ]
+        }
+      },
+      {
+        "id": "3",
+        "group": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Variant 3",
+              "kind": "group",
+              "fingerprint": "variant-3-fp"
+            }
+          ]
+        }
+      }
+    ],
+    "targets": [
+      {
+        "target": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Target",
+              "kind": "smartObject",
+              "fingerprint": "target-fp"
+            }
+          ]
+        },
+        "reference": {
+          "documentRoute": [],
+          "layerPath": [
+            {
+              "name": "Reference",
+              "kind": "pixel",
+              "fingerprint": "reference-fp"
+            }
+          ]
+        },
+        "input": null
+      }
+    ]
+  },
+  "attempt": 1,
+  "operationId": "job-1:asset-1:1",
+  "stagingDirectory": "/tmp/ne-psd-stage",
+  "scratchDirectory": "scratch",
+  "sourceRoot": {
+    "rootId": "fixture-root",
+    "path": "/trusted/input",
+    "identity": "1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}

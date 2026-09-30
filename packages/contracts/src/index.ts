@@ -15,6 +15,7 @@ export * from './inspection.js';
 export * from './review.js';
 export * from './errors.js';
 export * from './services.js';
+export * from './render-v2.js';
 export * from './canonicalize.js';
 
 export { QualificationRequestSchema, QualificationResultSchema, TemplateCandidateSchema } from './models.js';
