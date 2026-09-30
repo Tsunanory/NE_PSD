@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { join, basename, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -73,6 +73,21 @@ describe('working-copy isolation', () => {
     const result = await createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: requestedAttempt, operation });
     expect(result.attemptRoot).toBe(await realpath(requestedAttempt));
     expect(result.closure.every((entry) => entry.copyPath.startsWith(`${result.attemptRoot}/`))).toBe(true);
+  });
+
+  it('rejects a corrupt destination before any relink mutation', async () => {
+    const f = await fixture();
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    let mutations = 0;
+    operation.relink = async () => { mutations += 1; return undefined; };
+    const filesystem = {
+      readFile,
+      copy: async (source: string, destination: string) => { await copyFile(source, destination); await writeFile(destination, 'corrupt destination'); },
+      mkdir,
+      exists: async (path: string) => stat(path).then(() => true, () => false),
+    };
+    await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'corrupt-copy'), operation, filesystem })).rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH' });
+    expect(mutations).toBe(0);
   });
 
   it('rejects symlink escapes, missing links, changed expected hashes and unknown linkage', async () => {
@@ -245,7 +260,7 @@ describe('working-copy isolation', () => {
     const master = 'C:\\job\\мастер.psd';
     const first = 'C:\\job\\dep\\one\\shared.psb';
     const second = 'C:\\job\\dep\\two\\shared.psb';
-    const hashes: Record<string, string> = { [master.toLowerCase()]: digest('master'), [first.toLowerCase()]: digest('first'), [second.toLowerCase()]: digest('second') };
+    const hashes: Record<string, string> = { [master.toLowerCase()]: digest(master.toLowerCase()), [first.toLowerCase()]: digest(first.toLowerCase()), [second.toLowerCase()]: digest(second.toLowerCase()) };
     const copied: string[] = [];
     const copiedBytes: Record<string, Uint8Array> = {};
     const graph: Record<string, LinkedResource[]> = { [master.toLowerCase()]: [{ path: 'dep\\one\\shared.psb', sourceKind: 'linked' }, { path: second, sourceKind: 'linked' }], [first.toLowerCase()]: [], [second.toLowerCase()]: [] };
@@ -274,22 +289,17 @@ describe('working-copy isolation', () => {
     expect(copied.some((path) => path.toLowerCase().includes('shared.psb'))).toBe(true);
   });
 
-  it('uses the complete digest in destination names when prefixes collide', async () => {
+  it('rejects injected digests inconsistent with copied bytes', async () => {
     const f = await fixture();
     const firstHash = `${'a'.repeat(16)}${'1'.repeat(48)}`;
     const secondHash = `${'a'.repeat(16)}${'2'.repeat(48)}`;
     const firstPath = await realpath(f.first);
     const secondPath = await realpath(f.second);
     const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }, { path: f.second, sourceKind: 'linked' }], [f.first]: [], [f.second]: [] });
-    const result = await createWorkingCopy({
+    await expect(createWorkingCopy({
       masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'hash-collision'), operation,
       filesystem: { readFile: async (path) => readFile(path), hash: async (path) => path === f.first || path === firstPath ? firstHash : path === f.second || path === secondPath ? secondHash : sha256(path), copy: async (source, destination) => { await (await import('node:fs/promises')).copyFile(source, destination); }, mkdir: async (path, options) => { await (await import('node:fs/promises')).mkdir(path, options); }, exists: async (path) => { try { await readFile(path); return true; } catch { return false; } }, remove: async () => undefined },
-    });
-    const first = result.closure.find((entry) => entry.originalPath === firstPath)!;
-    const second = result.closure.find((entry) => entry.originalPath === secondPath)!;
-    expect(first.copyPath).not.toBe(second.copyPath);
-    expect(first.copyPath).toContain(firstHash);
-    expect(second.copyPath).toContain(secondHash);
+    })).rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH' });
   });
 
   it('deduplicates a shared dependency by identity and rejects identity cycles through aliases', async () => {

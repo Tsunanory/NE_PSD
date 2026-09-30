@@ -75,6 +75,9 @@ export type WorkingCopyClosureEntry = {
   originalPath: string;
   copyPath: string;
   sha256: string;
+  copyBeforeSha256: string;
+  copyAfterSha256: string;
+  mutationAcknowledged: boolean;
   sourceKind: LinkedResource['sourceKind'] | 'root';
   identity: string;
 };
@@ -241,7 +244,8 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
       }
       if (nodes.has(node.canonicalPath)) continue;
       identityToCanonical.set(nodeIdentity, node.canonicalPath);
-      const entry: WorkingCopyClosureEntry = { originalPath: node.canonicalPath, copyPath: targetPath(attemptRoot, node.hash, node.canonicalPath, paths), sha256: node.hash, sourceKind: node.sourceKind, identity: identityOf(node.canonicalPath, node.descriptor) };
+      const entry: WorkingCopyClosureEntry = { originalPath: node.canonicalPath, copyPath: targetPath(attemptRoot, node.hash, node.canonicalPath, paths), sha256: node.hash,
+        copyBeforeSha256: '', copyAfterSha256: '', mutationAcknowledged: false, sourceKind: node.sourceKind, identity: identityOf(node.canonicalPath, node.descriptor) };
       nodes.set(node.canonicalPath, entry);
       originalHashes.set(node.canonicalPath, node.hash);
       const links = await options.operation.readLinks(node.rawPath);
@@ -267,7 +271,14 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     }
 
     const byteSourceHashes = new Map<string, string>();
-    for (const entry of nodes.values()) { byteSourceHashes.set(entry.originalPath, createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex')); await fileSystem.copy(entry.originalPath, entry.copyPath); }
+    for (const entry of nodes.values()) {
+      const sourceHash = createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex');
+      byteSourceHashes.set(entry.originalPath, sourceHash);
+      await fileSystem.copy(entry.originalPath, entry.copyPath);
+      const copiedHash = createHash('sha256').update(await fileSystem.readFile(entry.copyPath)).digest('hex');
+      if (copiedHash !== sourceHash || sourceHash !== entry.sha256) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied bytes differ before any relink or embed', { path: entry.copyPath, expected: sourceHash, actual: copiedHash, phase: 'pre-relink-copy' });
+      entry.copyBeforeSha256 = copiedHash;
+    }
     const copiedByCanonicalPath = new Map<string, WorkingCopyClosureEntry>();
     for (const entry of nodes.values()) copiedByCanonicalPath.set(await Promise.resolve(paths.canonical(entry.copyPath)).catch(() => entry.copyPath), entry);
     const mutationProofs = new Map<string, boolean>();
@@ -303,6 +314,8 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
       const rawSourceHash = byteSourceHashes.get(entry.originalPath)!;
       const copiedHash = createHash('sha256').update(await fileSystem.readFile(entry.copyPath)).digest('hex');
       if (copiedHash !== rawSourceHash && mutationProofs.get(entry.originalPath) !== true) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied parent changed without an acknowledged relink or embed bound to the exact copied closure', { path: entry.copyPath, expected: rawSourceHash, actual: copiedHash, declared: entry.sha256, phase: 'copied-resource' });
+      entry.copyAfterSha256 = copiedHash;
+      entry.mutationAcknowledged = mutationProofs.get(entry.originalPath) === true;
       const remaining = await options.operation.readLinks(entry.copyPath);
       for (const descriptor of remaining) {
         if (descriptor.sourceKind === 'embedded') continue;

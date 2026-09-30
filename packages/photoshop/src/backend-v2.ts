@@ -16,7 +16,8 @@ import type { SessionLock } from './session-lock.js';
 import { OperationJournal, recoverJob, type RecoveryRuntime } from './recovery.js';
 import { createWorkingCopy, type QualifiedLinkOperation } from './working-copy.js';
 import { validateCanonicalTrace } from './backend.js';
-import { renderTraceOperationId } from './trace.js';
+import { inspectExportFile } from './export.js';
+import type { CanonicalTraceRecord } from './types.js';
 import {
   ASSET_CLOSURE_PROOF_V2_PATH, PREPARED_INPUT_MANIFEST_V2_PATH,
   prepareOwnedInputV2, sourceRootIdentity,
@@ -49,7 +50,7 @@ type PreparedClosure = {
 export class BackendV2Error extends Error {
   readonly category = 'ambiguousState';
   readonly retryable = false;
-  constructor(readonly code: string, message: string) { super(message); this.name = 'BackendV2Error'; }
+  constructor(readonly code: string, message: string) { super(`${code}: ${message}`); this.name = 'BackendV2Error'; }
 }
 
 async function actualFile(root: string, relativePath: string): Promise<string> {
@@ -111,6 +112,52 @@ function same(left: unknown, right: unknown): boolean { return canonicalize(left
 function identity(input: Identity) { return { schemaVersion: 2 as const, jobId: input.jobId, assetId: input.assetId, attempt: input.attempt, operationId: input.operationId }; }
 function assertValid(result: { success: boolean }, code: string): void { if (!result.success) throw new BackendV2Error(code, code); }
 
+async function traceRecords(root: string, relativePath: string): Promise<CanonicalTraceRecord[]> {
+  return (await evidence(root, relativePath)).toString().trim().split('\n').map((line) => JSON.parse(line) as CanonicalTraceRecord);
+}
+
+function containsField(value: unknown, name: RegExp, expected: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, child]) =>
+    (name.test(key) && child === expected) || containsField(child, name, expected));
+}
+
+async function verifyObservedUse(
+  root: string, request: RenderRequestV2, rendered: RenderedOwned,
+  sourcePath: string, templatePath: string, templatePreSha256: string,
+  journal: OperationJournal,
+): Promise<void> {
+  const documents = await traceRecords(root, rendered.evidence.documentTracePath);
+  const pre = documents.find((record) => record.phase === 'pre' && record.event === 'document-content');
+  const openIssued = documents.find((record) => record.phase === 'event' && record.detail?.type === 'operation' && record.detail.operation === 'openDocument' && record.detail.state === 'issued');
+  const openAcknowledged = documents.find((record) => record.phase === 'event' && record.detail?.type === 'state-transition' && record.detail.operation === 'openDocument' && record.detail.transition === 'acknowledged' && record.sequence > (openIssued?.sequence ?? Infinity));
+  const proof = documents.find((record) => record.phase === 'event' && record.detail?.type === 'ownership-proof' &&
+    record.detail.owned === true && record.detail.provisional === false && record.detail.parentId === null &&
+    record.detail.expectedParentId === null && record.detail.expectedPath === templatePath &&
+    record.detail.documentId === record.detail.activeDocumentId &&
+    record.sequence > (openAcknowledged?.sequence ?? Infinity));
+  if (!pre || pre.sha256 !== templatePreSha256 || !openIssued || openIssued.detail?.documentId !== templatePath ||
+      !openAcknowledged || !proof || !proof.detail?.documentId) {
+    throw new BackendV2Error('OPEN_TRACE_UNPROVEN', 'document trace does not prove the exact owned template open');
+  }
+  const documentsId = proof.detail.documentId;
+  const entries = await journal.read();
+  const terminal = new Map(entries.map((entry) => [entry.requestId, entry]));
+  const placements = [...terminal.values()].filter((entry) => (entry.operation === 'place' || entry.operation === 'replaceContents') && entry.state === 'acknowledged');
+  const tools = await traceRecords(root, rendered.evidence.toolTracePath);
+  let sourceObserved = false;
+  for (const placement of placements) {
+    const record = tools.find((candidate) => candidate.phase === 'pre' && candidate.requestId === placement.requestId);
+    if (!record?.path || !record.sha256) continue;
+    const call = await readJson(root, record.path, record.sha256) as { requestId?: unknown; toolName?: unknown; arguments?: unknown };
+    if (call.requestId !== placement.requestId || call.toolName !== record.event) continue;
+    if (containsField(call.arguments, /(?:path|source|input|asset|file)/i, sourcePath) &&
+        containsField(call.arguments, /documentId/i, documentsId)) sourceObserved = true;
+  }
+  if (!sourceObserved) throw new BackendV2Error('PLACEMENT_TRACE_UNPROVEN', 'qualified placement trace does not use the exact owned source in the opened template document');
+  if (request.operationId !== documents[0]?.operationId || request.operationId !== tools[0]?.operationId) throw new BackendV2Error('TRACE_OPERATION_MISMATCH', 'trace belongs to another V2 operation');
+}
+
 type RenderedOwned = {
   evidence: RenderEvidence;
   openedSourcePath: string;
@@ -118,7 +165,19 @@ type RenderedOwned = {
   quiescent: true;
   ownedDocumentsRemaining: 0;
 };
-type Context = Identity & { stagingDirectory: string; sourceRootPath: string; sourceRootIdentity: string; templateRoot: string; ownershipToken: string; previousPid: number; previousProcessStartIdentity: string };
+type Context = Identity & {
+  stagingDirectory: string; sourceRootPath: string; sourceRootIdentity: string; templateRoot: string;
+  ownershipToken: string; previousPid: number; previousProcessStartIdentity: string;
+  originals: Array<{ root: 'source' | 'template'; relativePath: string; sha256: string; bytes: number }>;
+};
+async function originalsUnchanged(context: Context): Promise<boolean> {
+  for (const original of context.originals) {
+    if (original.root !== 'source' && original.root !== 'template') return false;
+    const measured = await measuredFile(original.root === 'source' ? context.sourceRootPath : context.templateRoot, original.relativePath);
+    if (measured.sha256 !== original.sha256 || measured.bytes !== original.bytes) return false;
+  }
+  return true;
+}
 export type BackendV2Options = {
   base: Pick<PhotoshopBackendV2, 'capabilities' | 'inspect' | 'qualify'>;
   lock: SessionLock;
@@ -215,7 +274,11 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
       if (!lockOwner || lockOwner.operationId !== request.operationId) throw new BackendV2Error('LOCK_IDENTITY_MISMATCH', 'installation owner differs from operation');
       const context: Context = { jobId: request.jobId, assetId: request.asset.assetId, attempt: request.attempt, operationId: request.operationId,
         stagingDirectory: root, sourceRootPath: sourceRoot.root, sourceRootIdentity: sourceRoot.identity, templateRoot,
-        ownershipToken: lockOwner.ownershipToken, previousPid: lockOwner.pid, previousProcessStartIdentity: lockOwner.processStartIdentity };
+        ownershipToken: lockOwner.ownershipToken, previousPid: lockOwner.pid, previousProcessStartIdentity: lockOwner.processStartIdentity,
+        originals: [
+          ...measured.map((entry) => ({ root: 'source' as const, relativePath: entry.original.relativePath, sha256: entry.original.sha256, bytes: entry.bytes })),
+          { root: 'template' as const, relativePath: request.profile.template.relativePath, sha256: templateOriginal.sha256, bytes: templateOriginal.bytes },
+        ] };
       const contextRoot = await realpath(this.options.contextRoot);
       if (!(await stat(contextRoot)).isDirectory()) throw new BackendV2Error('CONTEXT_ROOT_INVALID', 'recovery context root is not a directory');
       if (contextRoot === sourceRoot.root || inside(sourceRoot.root, contextRoot) || inside(contextRoot, sourceRoot.root) ||
@@ -237,12 +300,31 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
         v1.jobId !== request.jobId || v1.assetId !== request.asset.assetId || v1.attempt !== request.attempt ||
         v1.profileSha256 !== request.profile.profileSha256 || v1.sourceSha256 !== request.asset.source.sha256 ||
         v1.toolSchemaSha256 !== request.profile.toolSchemaSha256) throw new BackendV2Error('RENDER_IDENTITY_MISMATCH', 'renderer evidence or opened document differs from verified owned paths');
-      for (const path of [v1.documentTracePath, v1.toolTracePath]) await validateCanonicalTrace(root, path, renderTraceOperationId(request));
+      for (const path of [v1.documentTracePath, v1.toolTracePath]) await validateCanonicalTrace(root, path, request.operationId);
+      if (v1.geometry.length !== request.profile.targets.length ||
+          v1.geometry.some((item, index) => !same(item.target, request.profile.targets[index]?.target) || item.fitMode !== request.profile.fitMode || !item.clipped || !item.adjacentToReference) ||
+          v1.visibility.length !== 3 || v1.visibility.some((item) => item.visibleVariantIds.length !== 1 || item.visibleVariantIds[0] !== item.variantId) ||
+          new Set(v1.visibility.map((item) => item.variantId)).size !== 3 ||
+          v1.checks.length < v1.geometry.length + 2 ||
+          !['propagation', 'source-integrity', ...v1.geometry.map((_, index) => `geometry-${index + 1}`)].every((id) => v1.checks.some((check) => check.id === id && check.passed))) {
+        throw new BackendV2Error('RENDER_QA_INCOMPLETE', 'renderer lacks complete geometry, visibility or mandatory checks');
+      }
       for (const artifact of v1.artifacts) {
         const file = await measuredFile(root, artifact.path);
-        if (file.sha256 !== artifact.sha256 || file.bytes !== artifact.bytes || artifact.format !== request.profile.output.format) throw new BackendV2Error('ARTIFACT_CHANGED', 'render artifact bytes or format differ from evidence');
+        if (file.sha256 !== artifact.sha256 || file.bytes !== artifact.bytes || artifact.format !== request.profile.output.format ||
+            artifact.width !== request.profile.output.width || artifact.height !== request.profile.output.height) {
+          throw new BackendV2Error('ARTIFACT_CHANGED', 'render artifact bytes or dimensions differ from evidence');
+        }
+        const decoded = await inspectExportFile(file.path, request.profile.output, request.profile.output.format === 'jpeg' ? 'opaque' : 'preserve');
+        if (decoded.bytes !== artifact.bytes || decoded.width !== artifact.width || decoded.height !== artifact.height) throw new BackendV2Error('ARTIFACT_CHANGED', 'decoded export differs from reported artifact');
       }
-      for (const check of v1.checks) { if (!check.passed) throw new BackendV2Error('CHECK_FAILED', 'renderer reported a failed check'); await measuredFile(root, check.evidencePath); }
+      for (const check of v1.checks) {
+        if (!check.passed) throw new BackendV2Error('CHECK_FAILED', 'renderer reported a failed check');
+        const persisted = await readJson(root, check.evidencePath);
+        if (!persisted || typeof persisted !== 'object' || (persisted as { id?: unknown }).id !== check.id || (persisted as { passed?: unknown }).passed !== true) {
+          throw new BackendV2Error('CHECK_FAILED', 'persisted check does not corroborate renderer evidence');
+        }
+      }
       const originalAfter = await Promise.all(measured.map((entry) => measuredFile(sourceRoot.root, entry.original.relativePath)));
       const copyAfter = await Promise.all(measured.map((entry) => measuredFile(root, entry.ownedRelativePath)));
       if (originalAfter.some((file, index) => file.sha256 !== measured[index]!.originalBeforeSha256) || copyAfter.some((file, index) => file.sha256 !== measured[index]!.copyBeforeSha256)) throw new BackendV2Error('OWNED_INPUT_CHANGED', 'owned source or original changed during rendering');
@@ -259,20 +341,24 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
       const templateEntries = await Promise.all(working.closure.map(async (entry) => {
         const original = await measuredFile(templateRoot, relative(templateRoot, entry.originalPath).split(sep).join('/'));
         const copy = await measuredFile(root, relative(root, entry.copyPath).split(sep).join('/'));
-        if (original.sha256 !== entry.sha256) throw new BackendV2Error('TEMPLATE_CHANGED', 'template original changed during render');
+        if (original.sha256 !== entry.sha256 || entry.copyBeforeSha256 !== entry.sha256 ||
+            (entry.copyAfterSha256 !== entry.copyBeforeSha256 && !entry.mutationAcknowledged)) {
+          throw new BackendV2Error('TEMPLATE_CHANGED', 'template original or pre-render copy proof changed');
+        }
         return { original: { rootId: this.options.templateRootId, relativePath: relative(templateRoot, entry.originalPath).split(sep).join('/'), sha256: entry.sha256 },
           ownedRelativePath: relative(root, entry.copyPath).split(sep).join('/'), bytes: original.bytes,
-          originalBeforeSha256: entry.sha256, originalAfterSha256: original.sha256, copyBeforeSha256: entry.sha256, copyAfterSha256: copy.sha256,
+          originalBeforeSha256: entry.sha256, originalAfterSha256: original.sha256, copyBeforeSha256: entry.copyBeforeSha256, copyAfterSha256: copy.sha256,
           identity: entry.identity, sourceKind: entry.originalPath === templateOriginal.path ? 'template' as const : 'linked' as const };
       }));
-      const byOriginal = new Map(working.closure.map((entry) => [entry.originalPath, entry]));
+      const byCopy = new Map(working.closure.map((entry) => [entry.copyPath, entry]));
       const templateEdges: Array<{ parentOwnedRelativePath: string; childOwnedRelativePath: string; identity: string }> = [];
       for (const parent of working.closure) {
-        for (const link of await this.options.templateLinks.readLinks(parent.originalPath)) {
+        for (const link of await this.options.templateLinks.readLinks(parent.copyPath)) {
           if (link.sourceKind === 'embedded') continue;
           if (link.sourceKind !== 'linked' || !link.path) throw new BackendV2Error('TEMPLATE_LINK_UNKNOWN', 'template link could not be resolved');
-          const originalChild = await realpath(isAbsolute(link.path) ? link.path : resolve(dirname(parent.originalPath), link.path));
-          const child = byOriginal.get(originalChild);
+          const childPath = await realpath(isAbsolute(link.path) ? link.path : resolve(dirname(parent.copyPath), link.path));
+          if (!inside(working.attemptRoot, childPath)) throw new BackendV2Error('TEMPLATE_LINK_ESCAPE', 'working template still links outside its attempt root');
+          const child = byCopy.get(childPath);
           if (!child) throw new BackendV2Error('TEMPLATE_CLOSURE_CHANGED', 'template link differs from copied closure');
           templateEdges.push({ parentOwnedRelativePath: relative(root, parent.copyPath).split(sep).join('/'),
             childOwnedRelativePath: relative(root, child.copyPath).split(sep).join('/'), identity: child.identity });
@@ -284,11 +370,18 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
         documentTrace: { relativePath: v1.documentTracePath, sha256: (await measuredFile(root, v1.documentTracePath)).sha256 } };
       assertValid(validateTemplateClosureProofV2(templateProofData, request), 'TEMPLATE_PROOF_INVALID');
       templateProof = await writeEvidence(root, V2_PROOF_PATHS.templateClosure, templateProofData);
-      ownerSnapshot = await writeEvidence(root, V2_PROOF_PATHS.releaseOwner, this.options.lock.journalMetadata);
       const journalPath = this.options.lock.journalPath;
       const journalBytes = await readFile(journalPath);
       if (!journalBytes.byteLength) throw new BackendV2Error('JOURNAL_MISSING', 'renderer did not persist operation journal');
-      await new OperationJournal(journalPath, this.options.lock.journalIdentity ?? undefined).read();
+      const auditedJournal = new OperationJournal(journalPath, this.options.lock.journalIdentity ?? undefined);
+      await auditedJournal.read();
+      const lockState = this.options.lock.journalMetadata;
+      if (auditedJournal.pendingUnknown().length || !lockState || lockState.unknownMutation || lockState.unsettledOperations !== 0 || !lockState.reconciledJobOwnedDocuments) {
+        await this.options.lock.markUnknownMutation();
+        throw new BackendV2Error('JOURNAL_UNSETTLED', 'render journal or transport has an unresolved operation');
+      }
+      await verifyObservedUse(root, request, rendered, openedSource.ownedPath, workingTemplate, working.closure.find((entry) => entry.originalPath === templateOriginal.path)!.copyAfterSha256, auditedJournal);
+      ownerSnapshot = await writeEvidence(root, V2_PROOF_PATHS.releaseOwner, lockState);
       journalSnapshot = await writeEvidenceBytes(root, V2_PROOF_PATHS.releaseJournal, journalBytes);
     }, signal);
     if (!rendered || !ownerSnapshot || !journalSnapshot || !ownedProof || !templateProof || this.options.lock.journalMetadata) throw new BackendV2Error('RELEASE_UNCONFIRMED', 'render did not confirm installation release');
@@ -314,6 +407,7 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
       if (!same(identity(context), identity(request)) ||
           context.operationId !== request.operationId || !context.ownershipToken ||
           !Number.isInteger(context.previousPid) || !context.previousProcessStartIdentity ||
+          !Array.isArray(context.originals) || context.originals.length < 2 ||
           await sourceRootIdentity(context.sourceRootPath).then((item) => item.identity) !== context.sourceRootIdentity ||
           await realpath(context.stagingDirectory) !== context.stagingDirectory ||
           await realpath(context.templateRoot) !== context.templateRoot) return unsafe();
@@ -335,8 +429,10 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
         const lockIdentity = this.options.lock.journalIdentity;
         if (!lockIdentity || runtime.journalPath !== this.options.lock.journalPath ||
           !runtime.identity || !same(runtime.identity, { ...lockIdentity, jobRoot: context.stagingDirectory })) return unsafe();
+        if (!await originalsUnchanged(context)) return unsafe();
         const recovered = await recoverJob(lockIdentity.jobId, runtime, signal);
         if (!recovered.safe) return unsafe();
+        if (!await originalsUnchanged(context)) return unsafe();
         await this.options.lock.reconcile();
         ownerSnapshot = await writeEvidence(context.stagingDirectory, V2_PROOF_PATHS.releaseOwner, this.options.lock.journalMetadata);
         const journal = await readFile(this.options.lock.journalPath);

@@ -148,7 +148,7 @@ function isSrgb(metadata: Metadata): boolean {
 
 function closeTo(actual: number, expected: number, tolerance = 18): boolean { return Math.abs(actual - expected) <= tolerance; }
 
-async function inspectFile(path: string, output: OutputSpec, alphaPolicy: AlphaPolicy, jpegBackground?: Rgb): Promise<{ bytes: number; width: number; height: number; format: 'jpeg' | 'png' }> {
+export async function inspectExportFile(path: string, output: OutputSpec, alphaPolicy: AlphaPolicy, jpegBackground?: Rgb): Promise<{ bytes: number; width: number; height: number; format: 'jpeg' | 'png' }> {
   let metadata: Metadata;
   try { metadata = await sharp(path, { failOn: 'error' }).metadata(); } catch (error) { throw new ExportError('FILE_INVALID', `unable to decode exported file: ${error instanceof Error ? error.message : 'decode failed'}`); }
   const format = metadata.format as string;
@@ -242,7 +242,7 @@ export async function exportVariants(options: ExportOptions): Promise<ExportResu
       const reported = (exported as { path?: unknown }).path;
       if (typeof reported !== 'string' || resolve(options.bundleRoot, reported) !== destination) throw new ExportError('EXPORT_PATH_MISMATCH', `export ${variantId} returned a mismatched path`);
       await assertNoSymlink(options.bundleRoot, destination);
-      const decoded = await inspectFile(destination, options.output, options.alphaPolicy, options.jpegBackground);
+      const decoded = await inspectExportFile(destination, options.output, options.alphaPolicy, options.jpegBackground);
       const bytes = await readFile(destination);
       const artifact: VariantArtifact = VariantArtifactSchema.parse({ variantId, path: relativePath(options.bundleRoot, destination), sha256: createHash('sha256').update(bytes).digest('hex'), bytes: decoded.bytes, width: decoded.width, height: decoded.height, format: decoded.format, colorSpace: 'sRGB' });
       artifacts.push(artifact);
