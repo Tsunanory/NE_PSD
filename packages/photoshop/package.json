@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@alisaitteke/photoshop-mcp": "1.7.19",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@ne-psd/contracts": "0.1.0",
     "sharp": "0.35.4"
   }
