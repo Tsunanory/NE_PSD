@@ -60,12 +60,12 @@ async function setup(gate: 'qualifiedVisionReviewer' | 'humanPerAsset' = 'qualif
   let makeDecision = (packet: any): ReviewDecision => {
     const content = packet.messages[1].content;
     const user = JSON.parse(typeof content === 'string' ? content : content[0].text);
-    return { schemaVersion: 1, reviewId: user.reviewId, jobId: job.jobId, assetId: 'asset-1', attempt: 1, evidenceSha256: state.sealedEvidenceSha256, sessionId: packet.sessionId, promptSha256: prompt.sha256, modelId: profile.modelId, modelProvenance: profile.provenance, reviewerVersion: 'qualified-test', reviewPolicySha256: policy.policySha256, verdict: 'pass', variantChecks: artifacts.map((artifact) => ({ variantId: artifact.variantId, verdict: 'pass', evidenceRefs: [artifact.path], reason: `Variant ${artifact.variantId} image is complete and visually clear.` })) as ReviewDecision['variantChecks'], checks: MANDATORY_REQUIREMENTS.map((row) => ({ requirementId: row.id, result: 'pass', evidenceRefs: [checks[0]!.evidencePath], reason: 'Verified against sealed evidence.' })), findings: [] };
+    return { schemaVersion: 1, reviewId: user.reviewId, jobId: job.jobId, assetId: 'asset-1', attempt: 1, evidenceSha256: state.sealedEvidenceSha256, sessionId: packet.sessionId, promptSha256: prompt.sha256, modelId: profile.modelId, modelProvenance: profile.provenance, reviewerVersion: 'runtime', reviewPolicySha256: policy.policySha256, verdict: 'pass', variantChecks: artifacts.map((artifact) => ({ variantId: artifact.variantId, verdict: 'pass', evidenceRefs: gate === 'humanPerAsset' ? [artifact.path, 'attestation.json'] : [artifact.path, 'source.png', `references/${artifact.variantId}.png`, `details/${artifact.variantId}.png`], reason: `Variant ${artifact.variantId} image is complete and visually clear.` })) as ReviewDecision['variantChecks'], checks: MANDATORY_REQUIREMENTS.map((row) => ({ requirementId: row.id, result: 'pass', evidenceRefs: [checks[0]!.evidencePath], reason: 'Verified against sealed evidence.' })), findings: [] };
   };
   const transport = { async invoke(packet: any) { calls++; return { raw: text(makeDecision(packet)), modelId: profile.modelId, finishReason: 'stop' as const, usage: { inputTokens: 100, outputTokens: 100 }, providerRevision: null, sessionId: packet.sessionId }; } };
   const counter: any = { profileId: profile.profileId, provenance: profile.provenance, qualificationEvidencePath: 'qualification.json', tokenizerId: 'tokenizer', chatTemplateId: 'template', runtimeBuild: 'runtime', runtimeContextTokens: 8192, countPacket(packet: any) { return { systemTokens: 100, userTokens: 200, schemaTokens: 100, wrapperTokens: 20, imageTokens: Array.isArray(packet.messages[1].content) ? 200 : 0 }; } };
   const service = new RuntimeIntelligenceService({ registry: { get: () => record } as any, transport, counterFor: () => counter, readAttempt: async () => state, readLimits: { maxFiles: 100, maxFileBytes: 100000, maxTotalBytes: 1000000 }, resolveAttemptRoot: async () => fixture.root, imageQualityPolicy: async () => quality, colorTrace: async () => ({ relativePath: 'traces/document.json', proofs }), readTrustedAttestation: async () => attestation, safeCleanup: async () => true, admissibleCorrections: async () => [] });
-  return { fixture, service, job, policy, manifest, evidence, state, contents, transport, counter, record, attestation, get calls() { return calls; }, setDecision(fn: typeof makeDecision) { makeDecision = fn; }, decision: makeDecision };
+  return { fixture, service, job, policy, quality, proofs, manifest, evidence, state, contents, transport, counter, record, attestation, get calls() { return calls; }, setDecision(fn: typeof makeDecision) { makeDecision = fn; }, decision: makeDecision };
 }
 
 const active: { close(): Promise<void> }[] = [];
@@ -97,6 +97,16 @@ describe('runtime review visual gate', () => {
     await expect(review(value)).rejects.toThrow(/ATTESTATION_MISSING/);
     expect(value.calls).toBe(0);
   });
+  it('rejects automated pass with stripped reference or detail citations', async () => {
+    const value = await create();
+    value.setDecision((packet) => { const decision = value.decision(packet); return { ...decision, variantChecks: decision.variantChecks.map((variant, index) => index === 0 ? { ...variant, evidenceRefs: variant.evidenceRefs.filter((path) => !path.startsWith('references/')) } : variant) as ReviewDecision['variantChecks'] }; });
+    await expect(review(value)).rejects.toMatchObject({ code: 'REVIEW_VARIANT_VISUAL_REFS_MISSING' });
+  });
+  it('rejects manual pass without a current attestation citation', async () => {
+    const value = await create('humanPerAsset');
+    value.setDecision((packet) => { const decision = value.decision(packet); return { ...decision, variantChecks: decision.variantChecks.map((variant, index) => index === 0 ? { ...variant, evidenceRefs: [value.evidence.artifacts[0]!.path] } : variant) as ReviewDecision['variantChecks'] }; });
+    await expect(review(value)).rejects.toMatchObject({ code: 'REVIEW_VARIANT_ATTESTATION_REF_MISSING' });
+  });
   it.each(['missing', 'fourth'] as const)('rejects %s variant response', async (kind) => {
     const value = await create();
     value.setDecision((packet) => { const decision = value.decision(packet); return { ...decision, variantChecks: kind === 'missing' ? decision.variantChecks.slice(0, 2) : [...decision.variantChecks, decision.variantChecks[0]] } as ReviewDecision; });
@@ -112,6 +122,7 @@ describe('runtime review visual gate', () => {
     ['wrong session', (decision: any) => ({ ...decision, sessionId: 'prior-session' }), 'REVIEW_BINDING_MISMATCH'],
     ['wrong attempt', (decision: any) => ({ ...decision, attempt: 2 }), 'REVIEW_BINDING_MISMATCH'],
     ['wrong evidence digest', (decision: any) => ({ ...decision, evidenceSha256: digest }), 'REVIEW_BINDING_MISMATCH'],
+    ['wrong reviewer runtime version', (decision: any) => ({ ...decision, reviewerVersion: 'stale-runtime' }), 'REVIEW_BINDING_MISMATCH'],
     ['wrong model provenance', (decision: any) => ({ ...decision, modelProvenance: { ...decision.modelProvenance, artifactSha256: 'b'.repeat(64) } }), 'REVIEW_BINDING_MISMATCH'],
     ['unknown cited evidence', (decision: any) => ({ ...decision, checks: [{ ...decision.checks[0], evidenceRefs: ['not-in-manifest.json'] }, ...decision.checks.slice(1)] }), 'REVIEW_REFERENCE_UNKNOWN'],
     ['wrong variant binding', (decision: any) => ({ ...decision, variantChecks: [{ ...decision.variantChecks[0], evidenceRefs: [decision.variantChecks[1].evidenceRefs[0]] }, ...decision.variantChecks.slice(1)] }), 'REVIEW_VARIANT_BINDING_INVALID'],
@@ -127,6 +138,20 @@ describe('runtime review visual gate', () => {
     const value = await create();
     value.record.qualification.artifact.runtimeSettings.visionMaxImages = undefined;
     await expect(review(value)).rejects.toMatchObject({ code: 'REVIEW_VISION_UNQUALIFIED' });
+    expect(value.calls).toBe(0);
+  });
+  it('rejects a self-consistent color policy and trace from another template', async () => {
+    const value = await create();
+    const stale = 'c'.repeat(64);
+    value.quality.profileSha256 = stale;
+    value.quality.policySha256 = sha256Json(value.quality, { excludeKeys: ['policySha256'] });
+    for (const proof of value.proofs) proof.profileSha256 = stale;
+    const trace = text({ colorExports: value.proofs });
+    await writeFile(join(value.fixture.root, 'traces/document.json'), trace);
+    const file = value.manifest.files.find((entry) => entry.relativePath === 'traces/document.json')!;
+    file.sha256 = sha256Bytes(trace); file.bytes = trace.length;
+    value.state.sealedEvidenceSha256 = bundleDigest(value.manifest);
+    await expect(review(value)).rejects.toMatchObject({ code: 'REVIEW_QA_POLICY_MISMATCH' });
     expect(value.calls).toBe(0);
   });
   it('blocks an image-count limit below the complete packet before inference', async () => {

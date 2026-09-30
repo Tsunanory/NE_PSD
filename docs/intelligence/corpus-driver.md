@@ -1,0 +1,15 @@
+# C5 corpus driver
+
+`createCorpusDriver` connects the frozen 64-case corpus to the real planner, diagnostic, and runtime reviewer entrypoints. The selected planner and reviewer must each come from `admitCandidateTrial` after exact artifact verification and a qualified runtime probe. The trial registry remains nonselectable and never becomes a production qualification. The caller supplies inference transport; the driver owns descriptor interpretation and counts each transport invocation at that boundary.
+
+`verifyCorpusLock` pins the SHA-256 of the frozen visual-corpus manifest in C-owned source. It verifies the fixed corpus bytes and caller rows, all 64 descriptor hashes, every referenced bundle file, and source assets before inference. Each trial rechecks its descriptor and sealed bundle bytes during materialization. The corpus and manifest digests are recorded in the report; live runs require this lock. Editing an expected answer, descriptor, or referenced file blocks the run even if the case counts still match.
+
+`materializeCorpusFixture` reads only the indexed descriptor and its manifest-listed files. It rejects portable path escapes, symlinks, oversized files, and descriptor binding errors. Every trial uses a private canonical temporary root, copies source bytes without editing them, and removes the root on completion or failure. Reviewer evidence, images, color trace, and QA policy stay in that root. The original assets and fixtures are never mutation targets.
+
+Preflight cases pass changed evidence or capability data through host validation and must return before transport. Wrong-platform qualification uses the artifact verifier. FC04–FC06 count the concrete planner packet through the admitted candidate's token counter; illustrative descriptor token counts are ignored. Exact boundary invokes once; input or reserved-output overflow invokes zero times. An unreachable measured recipe is a fixture setup failure, not an assumed pass.
+
+The corpus runner starts one deadline before each trial's preflight. It passes an abort signal into preflight and inference; a stuck preflight times out or aborts without a transport call. Fixture setup exceptions are recorded as trial failures and cannot satisfy an expected preflight rejection.
+
+Response faults alter bytes or transport metadata only after an actual reply. Planner proposal validation, strict JSON parsing, diagnostic action binding, reviewer evidence validation, image QA, and review decision validation remain the production host paths. The driver converts host results into `CaseOutcome`; `runCorpus` alone compares those outcomes with fixed expectations, enforces the one-call budget, and computes false accepts, false blocks, critical misses, latency, and the 192-trial report.
+
+Fake transport tests use a tiny exact-byte local artifact and independent request-bound responses. Synthetic visual defects are seeded in the fixture image set and reported as synthetic evidence only. These tests do not establish Windows, Photoshop, local Qwen artifact/runtime, or real visual reviewer qualification. Those remain live gates before production publication.

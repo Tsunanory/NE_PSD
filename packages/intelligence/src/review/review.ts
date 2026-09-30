@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { preflightQualifiedPacket, type QualifiedTokenCounter } from '../budget/qualified-token-count.js';
 import { proposeConfiguration } from '../planner/propose.js';
 import { assertInvocationAllowed } from '../profiles/invocation-policy.js';
+import type { CandidateTrialAdmission } from '../profiles/candidate-trial.js';
 import { inspectModelProfile, qualifyModelProfile, type QualificationAdapter, type ModelProfileRegistry } from '../profiles/profile-registry.js';
 import { loadPrompt } from '../prompts/prompt-registry.js';
 import { invokeBounded, type ModelTransport, type TransportRequest } from '../transport/model-transport.js';
@@ -18,6 +19,7 @@ import { validateVisualAttestation, type TrustedAttestationReader } from './visu
 const REVIEW_RESPONSE_SCHEMA = z.toJSONSchema(ReviewDecisionSchema, { target: 'draft-2020-12' });
 export type IntelligenceRuntimeDependencies = {
   registry: ModelProfileRegistry;
+  trialAdmission?: CandidateTrialAdmission | undefined;
   transport: ModelTransport;
   counterFor(profileId: string): QualifiedTokenCounter | null;
   qualificationAdapter?: QualificationAdapter;
@@ -48,7 +50,7 @@ export class RuntimeIntelligenceService implements IntelligenceService {
   async propose(input: Parameters<IntelligenceService['propose']>[0], signal: AbortSignal) {
     const counter = this.deps.counterFor(input.modelProfileId);
     if (!counter) return gate('TOKEN_COUNTER_UNQUALIFIED', 'selected planner has no qualified tokenizer adapter');
-    return proposeConfiguration({ ...input, registry: this.deps.registry, transport: this.deps.transport, sessionId: randomUUID(), signal, tokenCounter: counter, ...(this.deps.safetyTokens === undefined ? {} : { safetyTokens: this.deps.safetyTokens }) });
+    return proposeConfiguration({ ...input, registry: this.deps.registry, transport: this.deps.transport, sessionId: randomUUID(), signal, tokenCounter: counter, trialAdmission: this.deps.trialAdmission, ...(this.deps.safetyTokens === undefined ? {} : { safetyTokens: this.deps.safetyTokens }) });
   }
 
   async review(input: Parameters<IntelligenceService['review']>[0], modelProfileId: string, signal: AbortSignal) {
@@ -60,7 +62,7 @@ export class RuntimeIntelligenceService implements IntelligenceService {
     if (!record) return gate('REVIEW_PROFILE_UNQUALIFIED', 'selected reviewer unavailable');
     const profile = record.profile;
     const manual = snapshot.policy.visualGate === 'humanPerAsset';
-    assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', manualAttestation: manual, profile, explicitSelection: true, registry: this.deps.registry });
+    assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', manualAttestation: manual, profile, explicitSelection: true, registry: this.deps.registry, trialAdmission: this.deps.trialAdmission });
     const prompt = await loadPrompt(manual ? 'manual-reviewer' : 'runtime-reviewer');
     if (snapshot.policy.promptSha256 !== prompt.sha256) return gate('REVIEW_PROMPT_MISMATCH', 'policy does not bind the packaged reviewer prompt');
     let attestationPassed = false;
@@ -89,14 +91,16 @@ export class RuntimeIntelligenceService implements IntelligenceService {
     const quality = await inspectImageQuality({ artifacts, output: snapshot.job.profile.output, policy, colorEvidence, ...(reference ? { reference: { bytes: reference.bytes, sha256: reference.sha256 } } : {}) });
     await snapshot.assertUnchanged();
     const sessionId = randomUUID(), reviewId = randomUUID();
-    const context: ReviewContext = { job: snapshot.job, manifest: snapshot.manifest, evidence: snapshot.evidence, policy: snapshot.policy, evidenceSha256: snapshot.evidenceSha256, profile, sessionId, reviewId, promptSha256: prompt.sha256, imageQualityPassed: quality.passed, attestationPassed, safeCleanup: await this.deps.safeCleanup(snapshot.job.jobId, snapshot.manifest.assetId, attempt), admissibleCorrections: await this.deps.admissibleCorrections(snapshot.job.jobId, snapshot.manifest.assetId, attempt, snapshot.evidenceSha256) };
+    const reviewerVersion = record.qualification?.artifact?.runtimeBuild ?? this.deps.trialAdmission?.probe.runtimeBuild;
+    if (!reviewerVersion) return gate('REVIEW_RUNTIME_VERSION_UNQUALIFIED', 'reviewer runtime version is not bound to qualification evidence');
+    const context: ReviewContext = { job: snapshot.job, manifest: snapshot.manifest, evidence: snapshot.evidence, policy: snapshot.policy, evidenceSha256: snapshot.evidenceSha256, profile, sessionId, reviewId, promptSha256: prompt.sha256, reviewerVersion, imageQualityPassed: quality.passed, attestationPassed, safeCleanup: await this.deps.safeCleanup(snapshot.job.jobId, snapshot.manifest.assetId, attempt), admissibleCorrections: await this.deps.admissibleCorrections(snapshot.job.jobId, snapshot.manifest.assetId, attempt, snapshot.evidenceSha256) };
     assertDeterministicReviewEvidence(context);
-    const userText = canonicalize({ ...prepared.userData, reviewId, sessionId, visualGate: snapshot.policy.visualGate, attestationVerified: attestationPassed, imageQuality: quality, imageIndex: prepared.images.map(({ bytes: _bytes, ...index }) => index) });
-    const content = manual ? userText : (await prepareVisionPayload(prepared.images, record, userText)).content;
+    const userText = canonicalize({ ...prepared.userData, reviewId, sessionId, reviewerVersion, visualGate: snapshot.policy.visualGate, attestationVerified: attestationPassed, imageQuality: quality, imageIndex: prepared.images.map(({ bytes: _bytes, ...index }) => index) });
+    const content = manual ? userText : (await prepareVisionPayload(prepared.images, record, userText, this.deps.trialAdmission)).content;
     const counter = this.deps.counterFor(modelProfileId);
     if (!counter) return gate('TOKEN_COUNTER_UNQUALIFIED', 'selected reviewer has no qualified tokenizer adapter');
     const packet: TransportRequest = { profile, sessionId, messages: [{ role: 'system', content: prompt.text }, { role: 'user', content }], responseSchema: REVIEW_RESPONSE_SCHEMA, sampling: { temperature: 0, stream: false }, maxOutputBytes: 512 * 1024, maxOutputTokens: profile.maxOutputTokens, deadlineMs: this.deps.deadlineMs ?? 300000, signal };
-    const budget = preflightQualifiedPacket(record, counter, packet, this.deps.safetyTokens ?? 1024);
+    const budget = preflightQualifiedPacket(record, counter, packet, this.deps.safetyTokens ?? 1024, this.deps.trialAdmission);
     if (!manual && budget.imageTokens <= 0) return gate('REVIEW_IMAGE_TOKEN_COUNT_UNQUALIFIED', 'qualified image packet must count every image');
     const response = await invokeBounded(this.deps.transport, packet);
     await snapshot.assertUnchanged();

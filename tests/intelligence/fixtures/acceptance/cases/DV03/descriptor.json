@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "foundationContractVersion": 1,
+  "id": "DV03",
+  "role": "diagnostic",
+  "mode": "adapter",
+  "input": {
+    "diagnosticRequest": {
+      "schemaVersion": 1,
+      "kind": "diagnostic",
+      "requestId": "diagnostic-DV03",
+      "sessionId": "session-DV03",
+      "promptSha256": "32fbacdb9c912137751b4c0c202a851fb24c4fa60e1dfb211d35bdaddb952285",
+      "subjectId": "asset-1",
+      "evidenceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidenceRefs": [
+        "error.json"
+      ],
+      "attempt": 1,
+      "domainError": {
+        "code": "UNSUPPORTED_OPERATION",
+        "category": "capability",
+        "message": "unsupported operation requalifies backend",
+        "retryable": false,
+        "evidencePaths": [
+          "error.json"
+        ]
+      },
+      "allowedActions": [
+        "WAIT_FOR_REQUIRED_EVIDENCE",
+        "OPERATOR_RECOVERY_REQUIRED",
+        "REQUALIFY_BACKEND",
+        "RETRY_FRESH_COPY"
+      ]
+    },
+    "correctionCode": "REAPPLY_APPROVED_CONFIGURATION"
+  },
+  "visualBundle": null,
+  "responseFault": null,
+  "preflightFault": null
+}

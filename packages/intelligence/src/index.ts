@@ -28,4 +28,6 @@ export * from './review/visual-attestation.js';
 export * from './review/image-quality.js';
 export * from './review/visual-inputs.js';
 export * from './review/review.js';
+export * from './profiles/candidate-trial.js';
+export * from './profiles/qualification-adapter.js';
 export * from './cli/verify-model.js';

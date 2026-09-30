@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 1,
+  "foundationContractVersion": 1,
+  "rubricVersion": "synthetic-visual-rubric-v1",
+  "decoder": "sharp-0.35.4",
+  "generator": "tests/intelligence/fixtures/acceptance/generate.mjs",
+  "generatorSha256": "52fd18bdd5f4df8448b28a42c7d5dab7f9db5a824566ba9ace19c725c2245094",
+  "corpusSha256": "399e111dc330580fdf9b21151a1fcd4fde302ea7ce6af88a2a278bceac77ccee",
+  "descriptors": [
+    {
+      "id": "PG01",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG01/descriptor.json",
+      "sha256": "0046b5b1f1fc005d4398ed707f7f6736da2fbd319a4d7c0537ad3fb25a0b16d7"
+    },
+    {
+      "id": "PG02",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG02/descriptor.json",
+      "sha256": "030e68f13200fe85ccd5717c2b8047f4216a9312fcda36c7100a34ae05377d81"
+    },
+    {
+      "id": "PG03",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG03/descriptor.json",
+      "sha256": "089b3b7af6332e240636c6443444fc0b80d7c18ea19a4a9a44846c324dabb5f4"
+    },
+    {
+      "id": "PG04",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG04/descriptor.json",
+      "sha256": "4980606bc429008637bc1b48e2160e1f1ab644786432ce9d7566b4ad1e59184c"
+    },
+    {
+      "id": "PG05",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG05/descriptor.json",
+      "sha256": "ce6f0e54bdd9309f7ae6977514d36ab1a74025485c995999e91beca3e6dfe6e2"
+    },
+    {
+      "id": "PG06",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG06/descriptor.json",
+      "sha256": "136075e80755aab47bba7273f3c9e66d502cd90aff2e8dd9586fcee3aee2e62a"
+    },
+    {
+      "id": "PG07",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG07/descriptor.json",
+      "sha256": "7d90c8cd78890da99e73e44759929b254a792db876110039ef0eead61e0d9a2f"
+    },
+    {
+      "id": "PG08",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG08/descriptor.json",
+      "sha256": "ccf1f261341c7f2d5f13d06ac8c3d4815ab9ef5cf87a1a358e9c4fe5fa9412f8"
+    },
+    {
+      "id": "PG09",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG09/descriptor.json",
+      "sha256": "4872fdcd5809b738ecaee32b847656c2f7c1f3e852b981bdeb7a76cfe1eeb0b4"
+    },
+    {
+      "id": "PG10",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG10/descriptor.json",
+      "sha256": "8631612b99d2c9e6157512ee9cb9dbdadbcd465c47eb002f4aea72e8f4b805fb"
+    },
+    {
+      "id": "PG11",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG11/descriptor.json",
+      "sha256": "ad73827a6eed8aa09d7e4454fa2753dd4e499f9161f8d7ab856f94a4bd3089cf"
+    },
+    {
+      "id": "PG12",
+      "path": "tests/intelligence/fixtures/acceptance/cases/PG12/descriptor.json",
+      "sha256": "60f2e258d7e0ff4fd16724e2f62fb08b8b9ae5f6c5f5a867c147df6a74c9a112"
+    },
+    {
+      "id": "RR01",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR01/descriptor.json",
+      "sha256": "9d96bea1a46eb8379809cb7c4e4b82311a66a7a4ddf1dc7c5a4edc51e76e2093"
+    },
+    {
+      "id": "RR02",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR02/descriptor.json",
+      "sha256": "85bdc04544f3d855e0079b23b3f335131f0851def276722dc540c43d07ebd7cf"
+    },
+    {
+      "id": "RR03",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR03/descriptor.json",
+      "sha256": "ea165a9058c59be09a9da9b9ae24806201272b35aecb0d9408c8c5fd848e1129"
+    },
+    {
+      "id": "RR04",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR04/descriptor.json",
+      "sha256": "614615b8a97df45313cd0fb5c1035f07fac4c7e46b243fb5b584922537267d83"
+    },
+    {
+      "id": "RR05",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR05/descriptor.json",
+      "sha256": "f3c6974c937a68d212c12966f6e3453ab4fe3b6a8ffbae2dc3a285f6e900400c"
+    },
+    {
+      "id": "RR06",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR06/descriptor.json",
+      "sha256": "80a39a7f53c9740ef9ed374eae81c8f34c68ed3e08866f4f54bdd1fad19460d4"
+    },
+    {
+      "id": "RR07",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR07/descriptor.json",
+      "sha256": "5df312223089b6a41ec263a057f475b7fcd0c23b903e102b10cb4781086cc035"
+    },
+    {
+      "id": "RR08",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR08/descriptor.json",
+      "sha256": "a590ea0baf005e1bb865f504a226214630d6f13761f3f6f15fda0476c6cd34c3"
+    },
+    {
+      "id": "RR09",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR09/descriptor.json",
+      "sha256": "9f274dad80d965eb68e45a095019c7369de2906e6d15acbae132d121c2706c4e"
+    },
+    {
+      "id": "RR10",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR10/descriptor.json",
+      "sha256": "2c457bbc50dd4775b8022349fd51b37210a59b9751dde88f03be8dd98297ee4c"
+    },
+    {
+      "id": "RR11",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR11/descriptor.json",
+      "sha256": "cb70bb94bea3bb7d9d3f074966b4630d47a4a508615ffe647c9ead57e8c48439"
+    },
+    {
+      "id": "RR12",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR12/descriptor.json",
+      "sha256": "060029980663a86dff477e7958c56d7931c0db7f1bc80d5fe268a0e374f53024"
+    },
+    {
+      "id": "RR13",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR13/descriptor.json",
+      "sha256": "5f03c1ec9257369a1f91a1ce1af1d63f52fe236ea894f8a149bd8ff1568cd07e"
+    },
+    {
+      "id": "RR14",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR14/descriptor.json",
+      "sha256": "5265ffbe5dd12c267343d40d9e65d18df6844976eababa371fd2783a239a31cf"
+    },
+    {
+      "id": "RR15",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR15/descriptor.json",
+      "sha256": "12d63e21bffdb28f02f7b2ce0a43135ecbebe83d4f0a1bcf05041f3ba089068e"
+    },
+    {
+      "id": "RR16",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR16/descriptor.json",
+      "sha256": "9eb92c34b4c5d85dd3e9dbe3d635e94945c28ce893b9a73b2cfb5ed7fb091cc5"
+    },
+    {
+      "id": "RR17",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR17/descriptor.json",
+      "sha256": "b3f69bb2fa4927364d947f6ec526fe5407653f431c381ebd145e397f8f09a7f5"
+    },
+    {
+      "id": "RR18",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR18/descriptor.json",
+      "sha256": "de44a81de66a7f1b6a61c6d1c244e97f7367b0340124e8a6e84021d2f62656d5"
+    },
+    {
+      "id": "RR19",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR19/descriptor.json",
+      "sha256": "d5d9ac5d5923f51b5e04116cb321171f4d7ad6dc72b5b5995d03b04880657df0"
+    },
+    {
+      "id": "RR20",
+      "path": "tests/intelligence/fixtures/acceptance/cases/RR20/descriptor.json",
+      "sha256": "16d58afbc0726b12ee0d634db686e9c45982790fcea5a49cb1b9170ebf820e44"
+    },
+    {
+      "id": "AJ01",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ01/descriptor.json",
+      "sha256": "52292afe83d02879a99bef01c5aa64cbb6641ddcd2adc9ca3919f172810b0694"
+    },
+    {
+      "id": "AJ02",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ02/descriptor.json",
+      "sha256": "1d31bff35d4cadbb26f6bf4a14d7cb190b7552bff872a45d334719d02eaa88b3"
+    },
+    {
+      "id": "AJ03",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ03/descriptor.json",
+      "sha256": "07ecdfdcf5c120255eda9818ccd7ebdc5e331b617020e04c7ffad4e297784f9c"
+    },
+    {
+      "id": "AJ04",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ04/descriptor.json",
+      "sha256": "87e6b87aaad8236eda9a2da5fb5e09e0460b2902c28b267990ba2a10d6ed151f"
+    },
+    {
+      "id": "AJ05",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ05/descriptor.json",
+      "sha256": "b116d0c16f430dc708f832a40f0c58fa9d757868ba26322eae1d6987063ed664"
+    },
+    {
+      "id": "AJ06",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ06/descriptor.json",
+      "sha256": "9f1422af44d3e6e947bcbda907fd7008db3b10f505374b3e59640b308c9a8087"
+    },
+    {
+      "id": "AJ07",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ07/descriptor.json",
+      "sha256": "f1b746c6ebd1cb716b84013dce5ca7ec32fccaabb7b5906c41e0d7c29a9e10b8"
+    },
+    {
+      "id": "AJ08",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ08/descriptor.json",
+      "sha256": "ee76e5353983ad6da013a92c68c14a0f7f6719e1c36174530eede840e272a973"
+    },
+    {
+      "id": "AJ09",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ09/descriptor.json",
+      "sha256": "6c77a4bc0c8ae40a9568535b441cfea622a5fd0bf73301a384a5b5ca6015b55a"
+    },
+    {
+      "id": "AJ10",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ10/descriptor.json",
+      "sha256": "6a49dc74cd7c2645e84936af806dd33edbfa6b0704ff3a1de54424be223a81fe"
+    },
+    {
+      "id": "AJ11",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ11/descriptor.json",
+      "sha256": "43120a91b3280640c7141f416294ccd48552ea64e5065c1e169a1d67699db42c"
+    },
+    {
+      "id": "AJ12",
+      "path": "tests/intelligence/fixtures/acceptance/cases/AJ12/descriptor.json",
+      "sha256": "65373a6dd26659d03c66d3c8187a57355dcaae94c450dd00be17dca0541d1f8c"
+    },
+    {
+      "id": "FC01",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC01/descriptor.json",
+      "sha256": "a771527b649169fc9b181acc4790310428ccb9a3805124b0b17fd32bb82844e6"
+    },
+    {
+      "id": "FC02",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC02/descriptor.json",
+      "sha256": "e8547a112be7000892426ec722c6b74bcd9a3366145620ad7a7411d8491614a4"
+    },
+    {
+      "id": "FC03",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC03/descriptor.json",
+      "sha256": "b174703099740c7812f245c0921f432f33d3af4587af136cb02301a3af38c19b"
+    },
+    {
+      "id": "FC04",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC04/descriptor.json",
+      "sha256": "e254ebdb997a034d90141b02add8e5a2a869e747e33cad011219eee4ac6ad11c"
+    },
+    {
+      "id": "FC05",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC05/descriptor.json",
+      "sha256": "897acc7d48c8a3a1d83d471274103190eb66d5a72f7b3a2b6488a37fdcb8aeda"
+    },
+    {
+      "id": "FC06",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC06/descriptor.json",
+      "sha256": "9baca0925375c71ff720b94131d9ca2346b726b743f34496795a4c42688c8489"
+    },
+    {
+      "id": "FC07",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC07/descriptor.json",
+      "sha256": "b3b06c618f7590a1f1ca54a167f135a3409408f6490963ae71efc4f2b56b417d"
+    },
+    {
+      "id": "FC08",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC08/descriptor.json",
+      "sha256": "092684d7805cde2d5196d27c8f6d784a5eda820f04ef611d8f25770b7d773646"
+    },
+    {
+      "id": "FC09",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC09/descriptor.json",
+      "sha256": "8e0f4fae81880ad7871049278d2ffce44fbfb270e169dccc1c09aa5eb98d2bf4"
+    },
+    {
+      "id": "FC10",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC10/descriptor.json",
+      "sha256": "c637c9595f575ef972e0b0736ec53d3452f70b055d6273a2196bb0bb36292f04"
+    },
+    {
+      "id": "FC11",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC11/descriptor.json",
+      "sha256": "748dcaabde6485c1533f1f8cf193587736b248c09f1e7b908b2c3982f7835d5e"
+    },
+    {
+      "id": "FC12",
+      "path": "tests/intelligence/fixtures/acceptance/cases/FC12/descriptor.json",
+      "sha256": "395615a501c0847578cd777b013f5a478e27eb5a7991d8f9e67c9358c792ec63"
+    },
+    {
+      "id": "DV01",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV01/descriptor.json",
+      "sha256": "5e4c5684de03087c23b70b01a198063ef972498f4fef3f6a9d78999e1ecda474"
+    },
+    {
+      "id": "DV02",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV02/descriptor.json",
+      "sha256": "80b8d772283f9691ea8db6ebb38fa63a6e7e57c2240155b1c07fb09b80be8d66"
+    },
+    {
+      "id": "DV03",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV03/descriptor.json",
+      "sha256": "1505f48712494553873f1a40f75568bb87be16dd5594af402a51b39aed67ade7"
+    },
+    {
+      "id": "DV04",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV04/descriptor.json",
+      "sha256": "f9e399aee261b4a1ef1eab31545d3030628ca44d230477b69ae5543a0e5b8999"
+    },
+    {
+      "id": "DV05",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV05/descriptor.json",
+      "sha256": "74887e80b17733d47dbf436903e145bc53354966b53c0c23d3fa9d7878e99ded"
+    },
+    {
+      "id": "DV06",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV06/descriptor.json",
+      "sha256": "1eccb51b48aa675d0028a3ce8ce8f1e917f194c7452656332f443f27269c4597"
+    },
+    {
+      "id": "DV07",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV07/descriptor.json",
+      "sha256": "623dd45c9d1282ca61ada71f7989ea031d2d8944b356a7385d6c97b0b74aab55"
+    },
+    {
+      "id": "DV08",
+      "path": "tests/intelligence/fixtures/acceptance/cases/DV08/descriptor.json",
+      "sha256": "8181c789b70daca6192fa65d603a6b649ef1d76e3810d13c2b5bbb56b72ac632"
+    }
+  ],
+  "assets": [
+    {
+      "name": "bad-crop-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/bad-crop-1.png",
+      "sha256": "76e5a910f5c663f7dd33b6dda1f799bab5a528566e41f8da9e8a500451459c75",
+      "bytes": 14624,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "bad-crop-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/bad-crop-2.png",
+      "sha256": "f89bca7731cfb92dd074654bdf3e10b27f8d887538b525a359ff1dde5385abce",
+      "bytes": 13370,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "bad-crop-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/bad-crop-3.png",
+      "sha256": "d24efd3c22c6f1562b4ab7ca3190e579d36d59a1085e048c1642008940d933ce",
+      "bytes": 12079,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "clipping-bleed-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/clipping-bleed-1.png",
+      "sha256": "f586fff5a12616547f95e6cadf4cc5d53286593fdb61174ced0dbcfeae4012a4",
+      "bytes": 14627,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "clipping-bleed-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/clipping-bleed-2.png",
+      "sha256": "1ba2fe9152607d2ac2e304b059f16014773b55927ff1f313006f066d4e01bd78",
+      "bytes": 13285,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "clipping-bleed-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/clipping-bleed-3.png",
+      "sha256": "d1801885e44e066430f9b028cd93b4b7a47fa92f06ef4015453d95c380c29128",
+      "bytes": 12092,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "contain-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/contain-1.png",
+      "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+      "bytes": 11855,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "contain-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/contain-2.png",
+      "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+      "bytes": 11274,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "contain-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/contain-3.png",
+      "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+      "bytes": 11904,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "damaged-background-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/damaged-background-1.png",
+      "sha256": "98017ded501459a30e2c36ad2c6adb53834b8ac895037540f2b83ec3e538550f",
+      "bytes": 14596,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "damaged-background-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/damaged-background-2.png",
+      "sha256": "c5f946968d92de508e7ed0c0d0773fcb30e9e4d63c518857cee8d5b4c9517c5c",
+      "bytes": 13311,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "damaged-background-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/damaged-background-3.png",
+      "sha256": "b3c14cd817bb301797009eb98d9d440530b8a157cd5f697d5c3bbab47f30be6b",
+      "bytes": 12064,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "flat-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/flat-1.png",
+      "sha256": "24c2bb83a7308034f5d79d6203fc29effde71340f4ac3af8b41e3ef2f106d138",
+      "bytes": 10485,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "flat-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/flat-2.png",
+      "sha256": "587ba9b8955d433a061406ed280625b06628821f225e45cc600d7e1e13815731",
+      "bytes": 9902,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "flat-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/flat-3.png",
+      "sha256": "cc309af3f16f9f8e98ce78e370f1d2cb9e0c3964b2a62fab27849f29fe67a891",
+      "bytes": 10606,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "good-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/good-1.png",
+      "sha256": "1606e8bc2f9c17e7a6ebfeca3a09c5fc332689e1d26872cac690f62c4b4b0b57",
+      "bytes": 14620,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "good-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/good-2.png",
+      "sha256": "2ab579b4116ad991a317e78be89c94b3d992d7270cb4a7dc9515be6e9dda40ab",
+      "bytes": 13331,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "good-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/good-3.png",
+      "sha256": "b59d0594edcc023253de62f59187214abcdc9f63070177b2777871073a34ed16",
+      "bytes": 12087,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "missing-design-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/missing-design-1.png",
+      "sha256": "0a12e7f625ff5e3dd0ef79ca2d5b5a5da40566b5bdb22a9cdf32a2365fe81bc2",
+      "bytes": 13713,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "missing-design-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/missing-design-2.png",
+      "sha256": "5f4f87248924b917375fc44b632e7b00126d4262506e40c1bf6c72e20db92e1b",
+      "bytes": 12216,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "missing-design-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/missing-design-3.png",
+      "sha256": "6d43dede32f375c39ffd0b4e8f5d7fe06359da2df2dc1cc790b6f1aa4c653486",
+      "bytes": 11022,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "reference-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/reference-1.png",
+      "sha256": "ff66e9e0e832f2dc21b95154a0bd26297250dff0b32a3ad75612d0bc029716c2",
+      "bytes": 10800,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "reference-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/reference-2.png",
+      "sha256": "aeea365039a89920e482327506b73f9a207f74c5864af5b5f74aece11a923455",
+      "bytes": 10138,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "reference-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/reference-3.png",
+      "sha256": "4ddcfafdb6f5d80b8ad2a52cc6ecd482c921ba5461e935b526f06593a32b2383",
+      "bytes": 10795,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "removed-shadow-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/removed-shadow-1.png",
+      "sha256": "91357b57c7616a87d7b9c01b6df1ca03631264b97e755e39c9b9b531142aa699",
+      "bytes": 12893,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "removed-shadow-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/removed-shadow-2.png",
+      "sha256": "96ed4fe7789915f0a0c3878434dbde86d4eef27671f578c2e8bcc8074a03c430",
+      "bytes": 11539,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "removed-shadow-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/removed-shadow-3.png",
+      "sha256": "050af5dffd9c8d924c27ae6cbb6204b0e7d088bf32a18c29bb478ae676954630",
+      "bytes": 10478,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "small-edge-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/small-edge-1.png",
+      "sha256": "bceb65a10ae52e3716336ba97d7fc5bb88829f38158eb3827fb9d3e2021c1833",
+      "bytes": 14545,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "small-edge-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/small-edge-2.png",
+      "sha256": "383936f8e63e3295e244a066928df3b3a5b8afbfd0439ac21f0c3b55d3af192c",
+      "bytes": 13291,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "small-edge-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/small-edge-3.png",
+      "sha256": "a132822c47eac19773f5828e0d34c1587fd3e9aead536043c9bdec6d50c07ee1",
+      "bytes": 12094,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "source-flat.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/source-flat.png",
+      "sha256": "e77de2e711a2d6e18ed82ea5f48aa89911e65322a0ce9d380c45267fd8c44d54",
+      "bytes": 687,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "name": "source.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/source.png",
+      "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+      "bytes": 5058,
+      "width": 256,
+      "height": 256
+    },
+    {
+      "name": "stretch-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/stretch-1.png",
+      "sha256": "1a18c803f6ff7efdcb34f0defac1fc250ad29b7397e16233b4c1ccbe355c6cd5",
+      "bytes": 14585,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "stretch-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/stretch-2.png",
+      "sha256": "ccb520fdbf1fec66e2e968eea3bec91e9b5eddb704ee0a430dcaaf26822286a3",
+      "bytes": 13273,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "stretch-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/stretch-3.png",
+      "sha256": "1ee2fcd9057045149a9df3806b99443d56ef64d1c03fb4566fd2b5e83c658eff",
+      "bytes": 12036,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-perspective-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-perspective-1.png",
+      "sha256": "1606e8bc2f9c17e7a6ebfeca3a09c5fc332689e1d26872cac690f62c4b4b0b57",
+      "bytes": 14620,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-perspective-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-perspective-2.png",
+      "sha256": "1606e8bc2f9c17e7a6ebfeca3a09c5fc332689e1d26872cac690f62c4b4b0b57",
+      "bytes": 14620,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-perspective-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-perspective-3.png",
+      "sha256": "1606e8bc2f9c17e7a6ebfeca3a09c5fc332689e1d26872cac690f62c4b4b0b57",
+      "bytes": 14620,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-source-1.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-source-1.png",
+      "sha256": "c0d377e3e8f95848009368f6cd690fa111911731262545ead4cb58f49e447979",
+      "bytes": 14371,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-source-2.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-source-2.png",
+      "sha256": "8e8f7d233d5abf79878f3d7af4b08416a42e23e4ee2a12c57dd425635ef09c52",
+      "bytes": 12952,
+      "width": 512,
+      "height": 384
+    },
+    {
+      "name": "wrong-source-3.png",
+      "path": "tests/intelligence/fixtures/acceptance/images/wrong-source-3.png",
+      "sha256": "87c6b8f112dfea673c5de94951d2318da7e96d38fe9591340a4ab672e3a90b85",
+      "bytes": 11712,
+      "width": 512,
+      "height": 384
+    }
+  ],
+  "visualCaseIds": [
+    "RR01",
+    "RR02",
+    "RR03",
+    "RR04",
+    "RR05",
+    "RR06",
+    "RR07",
+    "RR08",
+    "RR09",
+    "RR10",
+    "RR11",
+    "RR12",
+    "RR13",
+    "RR14",
+    "RR15",
+    "RR16",
+    "RR17",
+    "RR18",
+    "RR19",
+    "RR20",
+    "FC07",
+    "FC10",
+    "FC11",
+    "DV05",
+    "DV06",
+    "DV07",
+    "DV08"
+  ],
+  "imageOrder": [
+    "source",
+    "reference-1",
+    "output-1",
+    "detail-1-edge",
+    "detail-1-center",
+    "reference-2",
+    "output-2",
+    "detail-2-edge",
+    "detail-2-center",
+    "reference-3",
+    "output-3",
+    "detail-3-edge",
+    "detail-3-center"
+  ],
+  "defectRegions": {
+    "1": {
+      "left": 69,
+      "top": 69,
+      "right": 245,
+      "bottom": 302
+    },
+    "2": {
+      "left": 160,
+      "top": 73,
+      "right": 337,
+      "bottom": 301
+    },
+    "3": {
+      "left": 267,
+      "top": 71,
+      "right": 448,
+      "bottom": 305
+    }
+  },
+  "syntheticOnly": true
+}

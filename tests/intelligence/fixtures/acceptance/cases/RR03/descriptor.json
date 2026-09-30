@@ -1,0 +1,999 @@
+{
+  "schemaVersion": 1,
+  "foundationContractVersion": 1,
+  "id": "RR03",
+  "role": "reviewer",
+  "mode": "visual",
+  "input": {
+    "job": {
+      "schemaVersion": 1,
+      "jobId": "corpus-RR03",
+      "profile": {
+        "schemaVersion": 1,
+        "profileId": "corpus-template",
+        "template": {
+          "rootId": "root",
+          "relativePath": "synthetic-template.psd",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "qualificationId": "synthetic-only",
+        "backendId": "alisaitteke",
+        "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "targets": [
+          {
+            "target": {
+              "documentRoute": [],
+              "layerPath": [
+                {
+                  "name": "target",
+                  "kind": "smartObject",
+                  "fingerprint": "f-target"
+                }
+              ]
+            },
+            "reference": {
+              "documentRoute": [],
+              "layerPath": [
+                {
+                  "name": "reference",
+                  "kind": "smartObject",
+                  "fingerprint": "f-reference"
+                }
+              ]
+            },
+            "input": null
+          }
+        ],
+        "fitMode": "contain",
+        "output": {
+          "format": "png",
+          "quality": 100,
+          "colorSpace": "sRGB",
+          "width": 512,
+          "height": 384
+        },
+        "variants": [
+          {
+            "id": "1",
+            "group": {
+              "documentRoute": [],
+              "layerPath": [
+                {
+                  "name": "variant-1",
+                  "kind": "group",
+                  "fingerprint": "f-variant-1"
+                }
+              ]
+            }
+          },
+          {
+            "id": "2",
+            "group": {
+              "documentRoute": [],
+              "layerPath": [
+                {
+                  "name": "variant-2",
+                  "kind": "group",
+                  "fingerprint": "f-variant-2"
+                }
+              ]
+            }
+          },
+          {
+            "id": "3",
+            "group": {
+              "documentRoute": [],
+              "layerPath": [
+                {
+                  "name": "variant-3",
+                  "kind": "group",
+                  "fingerprint": "f-variant-3"
+                }
+              ]
+            }
+          }
+        ],
+        "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0"
+      },
+      "assets": [
+        {
+          "assetId": "asset-1",
+          "source": {
+            "rootId": "input",
+            "relativePath": "source.png",
+            "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046"
+          },
+          "sourceBytes": 5058
+        }
+      ],
+      "outputRootId": "output",
+      "modelProfileId": "planner-candidate",
+      "reviewerModelProfileId": "reviewer-candidate",
+      "reviewPolicySha256": "33fd5f187e03bb0bdde76b7ddb17a33d5c1dee6a088dd96ae84846c5d465f518",
+      "trigger": "interactive",
+      "maxAttempts": 2
+    },
+    "policy": {
+      "schemaVersion": 1,
+      "policyId": "ne-psd-mandatory-review-v1",
+      "policySha256": "33fd5f187e03bb0bdde76b7ddb17a33d5c1dee6a088dd96ae84846c5d465f518",
+      "promptSha256": "5964f89bb5bfb776523ce0c012cd1063508b92b38ebbbf6cc677c7ded7bb132d",
+      "requirements": [
+        {
+          "id": "BINDING.CURRENT_ATTEMPT",
+          "description": "Current source/profile/tool-schema/job/asset/attempt/policy binding agrees everywhere",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "MANIFEST.COMPLETE",
+          "description": "Immutable manifest closes over all required evidence files, with verified digests and byte counts",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "ARTIFACTS.EXACTLY_THREE",
+          "description": "Exactly variant IDs 1, 2 and 3; no duplicate, missing or extra artifact",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "IMAGE.DECODE_FORMAT",
+          "description": "Each file decodes completely and actual media format matches the selected format",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "IMAGE.DIMENSIONS_COLOR",
+          "description": "Exact requested pixel dimensions and qualified sRGB color evidence for all artifacts",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "GEOMETRY.REQUESTED_FIT",
+          "description": "Actual measured post-place bounds satisfy the selected fit policy within the qualified tolerance",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "CLIPPING.ALPHA_ADJACENCY",
+          "description": "Reference alpha/mask clipping, layer relationship and adjacency are evidenced",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "VARIANTS.VISIBILITY",
+          "description": "Each export shows only its selected qualified variant group",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "SMART_OBJECT.LINEAGE_PROPAGATION",
+          "description": "Correct root-to-child lineage; shared propagation or independently replaced targets proven",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "SAFETY.LINKED_ISOLATION",
+          "description": "All mutable linked content is isolated/relinked/embedded according to the qualified profile",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "SAFETY.ORIGINALS_UNCHANGED",
+          "description": "Source PSD, source image and original linked-file digests are unchanged",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "SAFETY.DOCUMENT_OWNERSHIP",
+          "description": "Trace shows mutations/cleanup only on job-owned documents and known final state",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "IMAGE.QUALITY",
+          "description": "Template-calibrated blankness, coverage/alpha and qualified comparison checks pass",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        },
+        {
+          "id": "VISUAL.QUALIFIED",
+          "description": "Every current artifact passes the selected visual gate",
+          "mandatory": true,
+          "evaluator": "model"
+        },
+        {
+          "id": "EVIDENCE.TRACE_COMPLETE",
+          "description": "Complete required tool/document/check/QA evidence has known provenance and no gaps",
+          "mandatory": true,
+          "evaluator": "deterministic"
+        }
+      ],
+      "visualGate": "qualifiedVisionReviewer"
+    },
+    "evidence": {
+      "schemaVersion": 1,
+      "jobId": "corpus-RR03",
+      "assetId": "asset-1",
+      "attempt": 1,
+      "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0",
+      "sourceSha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+      "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "geometry": [],
+      "visibility": [],
+      "artifacts": [
+        {
+          "variantId": "1",
+          "path": "images/output-1.png",
+          "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "bytes": 11855,
+          "width": 512,
+          "height": 384,
+          "format": "png",
+          "colorSpace": "sRGB"
+        },
+        {
+          "variantId": "2",
+          "path": "images/output-2.png",
+          "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "bytes": 11274,
+          "width": 512,
+          "height": 384,
+          "format": "png",
+          "colorSpace": "sRGB"
+        },
+        {
+          "variantId": "3",
+          "path": "images/output-3.png",
+          "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "bytes": 11904,
+          "width": 512,
+          "height": 384,
+          "format": "png",
+          "colorSpace": "sRGB"
+        }
+      ],
+      "checks": [
+        {
+          "id": "GEOMETRY.REQUESTED_FIT",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "CLIPPING.ALPHA_ADJACENCY",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "VARIANTS.VISIBILITY",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "SMART_OBJECT.LINEAGE_PROPAGATION",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "SAFETY.LINKED_ISOLATION",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "SAFETY.ORIGINALS_UNCHANGED",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "SAFETY.DOCUMENT_OWNERSHIP",
+          "passed": true,
+          "evidencePath": "reports/synthetic-backend-checks.json"
+        },
+        {
+          "id": "IMAGE.QUALITY",
+          "passed": true,
+          "evidencePath": "reports/qa.json"
+        },
+        {
+          "id": "IMAGE.QUALITY_POLICY",
+          "passed": true,
+          "evidencePath": "reports/qa-calibration.json"
+        }
+      ],
+      "documentTracePath": "traces/document.json",
+      "toolTracePath": "traces/tool.json"
+    },
+    "manifest": {
+      "schemaVersion": 1,
+      "jobId": "corpus-RR03",
+      "assetId": "asset-1",
+      "attempt": 1,
+      "files": [
+        {
+          "relativePath": "images/detail-1-center.png",
+          "sha256": "ca2b7e1a5ba7c112e49dafb5cfe45ba35b20851b9dac7bd875a7db685c5db231",
+          "bytes": 1126,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/detail-1-edge.png",
+          "sha256": "6b587916e9879ac2e19c26a60da83eb1ee42af88ef0be3cd84a50c4b3ab10f8d",
+          "bytes": 629,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/detail-2-center.png",
+          "sha256": "fa173c4462ea78fb1b2cfd81baaeb46ccf2e2fe90e760a20bd1d4def3d8eb6c6",
+          "bytes": 1126,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/detail-2-edge.png",
+          "sha256": "aecc18a1c04068373005b005c32cb0f1eabf201a1a98eb65daf4321c0b1d595f",
+          "bytes": 1038,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/detail-3-center.png",
+          "sha256": "53083cefa7c24958d46b872be577825012f7ca74871ebab4dfde2d9e7b6a5f0a",
+          "bytes": 1126,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/detail-3-edge.png",
+          "sha256": "84a855dfe148ed393850c54facf50ad0e3f7a528ff3f5bf614d7b26c789bdda8",
+          "bytes": 1143,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/output-1.png",
+          "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "bytes": 11855,
+          "role": "artifact"
+        },
+        {
+          "relativePath": "images/output-2.png",
+          "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "bytes": 11274,
+          "role": "artifact"
+        },
+        {
+          "relativePath": "images/output-3.png",
+          "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "bytes": 11904,
+          "role": "artifact"
+        },
+        {
+          "relativePath": "images/reference-1.png",
+          "sha256": "ff66e9e0e832f2dc21b95154a0bd26297250dff0b32a3ad75612d0bc029716c2",
+          "bytes": 10800,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/reference-2.png",
+          "sha256": "aeea365039a89920e482327506b73f9a207f74c5864af5b5f74aece11a923455",
+          "bytes": 10138,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/reference-3.png",
+          "sha256": "4ddcfafdb6f5d80b8ad2a52cc6ecd482c921ba5461e935b526f06593a32b2383",
+          "bytes": 10795,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "images/source.png",
+          "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+          "bytes": 5058,
+          "role": "imageInput"
+        },
+        {
+          "relativePath": "render-evidence.json",
+          "sha256": "1a80b0f996636b77b8d7d41ed01db61c72cd5ece2e86add4f82cbd1795ac5db3",
+          "bytes": 1931,
+          "role": "renderEvidence"
+        },
+        {
+          "relativePath": "reports/qa-calibration.json",
+          "sha256": "e01bf3dfc43b9f1ba551d7477d74272c7e0e97e52810ee5c5529c6337c479bd4",
+          "bytes": 1003,
+          "role": "check"
+        },
+        {
+          "relativePath": "reports/qa.json",
+          "sha256": "a897a165bbe6458bdbe51d6fb5bce3200a51ef271ff3402258a4ce107f8f6fb6",
+          "bytes": 989,
+          "role": "check"
+        },
+        {
+          "relativePath": "reports/synthetic-backend-checks.json",
+          "sha256": "77f6c98b03028ed3bd6fdf457d125abc8d8c9c79fe3e5aa28283d4a9285eefa9",
+          "bytes": 1813,
+          "role": "check"
+        },
+        {
+          "relativePath": "traces/document.json",
+          "sha256": "5739c42d1d008ed651ff935ae94c4353613e4065b92a686e9f5eb32ea5c9cfec",
+          "bytes": 38,
+          "role": "trace"
+        },
+        {
+          "relativePath": "traces/tool.json",
+          "sha256": "b61a35123be4fc56da31473071e78399c217537cfb734b7beb62c164ff55bc6b",
+          "bytes": 1305,
+          "role": "trace"
+        }
+      ],
+      "visionInputs": [
+        {
+          "id": "source-design",
+          "role": "source",
+          "relativePath": "images/source.png",
+          "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+          "width": 256,
+          "height": 256,
+          "variantId": null,
+          "derivedFromSha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+          "crop": null
+        },
+        {
+          "id": "reference-1",
+          "role": "reference",
+          "relativePath": "images/reference-1.png",
+          "sha256": "ff66e9e0e832f2dc21b95154a0bd26297250dff0b32a3ad75612d0bc029716c2",
+          "width": 512,
+          "height": 384,
+          "variantId": "1",
+          "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "crop": null
+        },
+        {
+          "id": "output-1",
+          "role": "output",
+          "relativePath": "images/output-1.png",
+          "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "width": 512,
+          "height": 384,
+          "variantId": "1",
+          "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "crop": null
+        },
+        {
+          "id": "detail-1-edge",
+          "role": "detail",
+          "relativePath": "images/detail-1-edge.png",
+          "sha256": "6b587916e9879ac2e19c26a60da83eb1ee42af88ef0be3cd84a50c4b3ab10f8d",
+          "width": 64,
+          "height": 64,
+          "variantId": "1",
+          "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "crop": {
+            "left": 221,
+            "top": 125,
+            "right": 285,
+            "bottom": 189
+          }
+        },
+        {
+          "id": "detail-1-center",
+          "role": "detail",
+          "relativePath": "images/detail-1-center.png",
+          "sha256": "ca2b7e1a5ba7c112e49dafb5cfe45ba35b20851b9dac7bd875a7db685c5db231",
+          "width": 96,
+          "height": 96,
+          "variantId": "1",
+          "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "crop": {
+            "left": 94,
+            "top": 145,
+            "right": 190,
+            "bottom": 241
+          }
+        },
+        {
+          "id": "reference-2",
+          "role": "reference",
+          "relativePath": "images/reference-2.png",
+          "sha256": "aeea365039a89920e482327506b73f9a207f74c5864af5b5f74aece11a923455",
+          "width": 512,
+          "height": 384,
+          "variantId": "2",
+          "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "crop": null
+        },
+        {
+          "id": "output-2",
+          "role": "output",
+          "relativePath": "images/output-2.png",
+          "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "width": 512,
+          "height": 384,
+          "variantId": "2",
+          "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "crop": null
+        },
+        {
+          "id": "detail-2-edge",
+          "role": "detail",
+          "relativePath": "images/detail-2-edge.png",
+          "sha256": "aecc18a1c04068373005b005c32cb0f1eabf201a1a98eb65daf4321c0b1d595f",
+          "width": 64,
+          "height": 64,
+          "variantId": "2",
+          "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "crop": {
+            "left": 313,
+            "top": 125,
+            "right": 377,
+            "bottom": 189
+          }
+        },
+        {
+          "id": "detail-2-center",
+          "role": "detail",
+          "relativePath": "images/detail-2-center.png",
+          "sha256": "fa173c4462ea78fb1b2cfd81baaeb46ccf2e2fe90e760a20bd1d4def3d8eb6c6",
+          "width": 96,
+          "height": 96,
+          "variantId": "2",
+          "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "crop": {
+            "left": 185,
+            "top": 145,
+            "right": 281,
+            "bottom": 241
+          }
+        },
+        {
+          "id": "reference-3",
+          "role": "reference",
+          "relativePath": "images/reference-3.png",
+          "sha256": "4ddcfafdb6f5d80b8ad2a52cc6ecd482c921ba5461e935b526f06593a32b2383",
+          "width": 512,
+          "height": 384,
+          "variantId": "3",
+          "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "crop": null
+        },
+        {
+          "id": "output-3",
+          "role": "output",
+          "relativePath": "images/output-3.png",
+          "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "width": 512,
+          "height": 384,
+          "variantId": "3",
+          "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "crop": null
+        },
+        {
+          "id": "detail-3-edge",
+          "role": "detail",
+          "relativePath": "images/detail-3-edge.png",
+          "sha256": "84a855dfe148ed393850c54facf50ad0e3f7a528ff3f5bf614d7b26c789bdda8",
+          "width": 64,
+          "height": 64,
+          "variantId": "3",
+          "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "crop": {
+            "left": 424,
+            "top": 125,
+            "right": 488,
+            "bottom": 189
+          }
+        },
+        {
+          "id": "detail-3-center",
+          "role": "detail",
+          "relativePath": "images/detail-3-center.png",
+          "sha256": "53083cefa7c24958d46b872be577825012f7ca74871ebab4dfde2d9e7b6a5f0a",
+          "width": 96,
+          "height": 96,
+          "variantId": "3",
+          "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "crop": {
+            "left": 292,
+            "top": 145,
+            "right": 388,
+            "bottom": 241
+          }
+        }
+      ]
+    },
+    "trustedState": {
+      "job": {
+        "schemaVersion": 1,
+        "jobId": "corpus-RR03",
+        "profile": {
+          "schemaVersion": 1,
+          "profileId": "corpus-template",
+          "template": {
+            "rootId": "root",
+            "relativePath": "synthetic-template.psd",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "qualificationId": "synthetic-only",
+          "backendId": "alisaitteke",
+          "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "targets": [
+            {
+              "target": {
+                "documentRoute": [],
+                "layerPath": [
+                  {
+                    "name": "target",
+                    "kind": "smartObject",
+                    "fingerprint": "f-target"
+                  }
+                ]
+              },
+              "reference": {
+                "documentRoute": [],
+                "layerPath": [
+                  {
+                    "name": "reference",
+                    "kind": "smartObject",
+                    "fingerprint": "f-reference"
+                  }
+                ]
+              },
+              "input": null
+            }
+          ],
+          "fitMode": "contain",
+          "output": {
+            "format": "png",
+            "quality": 100,
+            "colorSpace": "sRGB",
+            "width": 512,
+            "height": 384
+          },
+          "variants": [
+            {
+              "id": "1",
+              "group": {
+                "documentRoute": [],
+                "layerPath": [
+                  {
+                    "name": "variant-1",
+                    "kind": "group",
+                    "fingerprint": "f-variant-1"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2",
+              "group": {
+                "documentRoute": [],
+                "layerPath": [
+                  {
+                    "name": "variant-2",
+                    "kind": "group",
+                    "fingerprint": "f-variant-2"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "3",
+              "group": {
+                "documentRoute": [],
+                "layerPath": [
+                  {
+                    "name": "variant-3",
+                    "kind": "group",
+                    "fingerprint": "f-variant-3"
+                  }
+                ]
+              }
+            }
+          ],
+          "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0"
+        },
+        "assets": [
+          {
+            "assetId": "asset-1",
+            "source": {
+              "rootId": "input",
+              "relativePath": "source.png",
+              "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046"
+            },
+            "sourceBytes": 5058
+          }
+        ],
+        "outputRootId": "output",
+        "modelProfileId": "planner-candidate",
+        "reviewerModelProfileId": "reviewer-candidate",
+        "reviewPolicySha256": "33fd5f187e03bb0bdde76b7ddb17a33d5c1dee6a088dd96ae84846c5d465f518",
+        "trigger": "interactive",
+        "maxAttempts": 2
+      },
+      "currentAttempt": 1,
+      "sealed": true,
+      "sealedEvidenceSha256": "97c3e6c4057e7ebf3ec36ddd353f5d7aa0c6734f056c3ecfb0d1d655aa5e053b"
+    },
+    "bundleRoot": "tests/intelligence/fixtures/acceptance/cases/RR03/files",
+    "imageQualityPolicy": {
+      "qualified": true,
+      "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0",
+      "templateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "backendQualificationSha256": "5cb789e0b62f5949deab5461bfd7cc1585558ffff6dc26fef23d8538c9e2d140",
+      "transformId": "synthetic-sharp-srgb-v1",
+      "output": {
+        "format": "png",
+        "quality": 100,
+        "colorSpace": "sRGB",
+        "width": 512,
+        "height": 384
+      },
+      "maxInputBytes": 1000000,
+      "maxPixels": 196608,
+      "maxDecodedBytes": 786432,
+      "backgroundRgb": [
+        230,
+        223,
+        209
+      ],
+      "foregroundDistance": 24,
+      "alphaThreshold": 128,
+      "metrics": {
+        "minForegroundFraction": 0.05,
+        "alphaFraction": {
+          "min": 1,
+          "max": 1
+        }
+      },
+      "policySha256": "bdc74417234af8c8b70041a1fd565f20ba6f7b28fdfac7bd0c699413fd2fb292"
+    },
+    "colorTraceSelection": {
+      "relativePath": "traces/tool.json",
+      "proofs": [
+        {
+          "variantId": 1,
+          "artifactSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+          "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0",
+          "templateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backendQualificationSha256": "5cb789e0b62f5949deab5461bfd7cc1585558ffff6dc26fef23d8538c9e2d140",
+          "transformId": "synthetic-sharp-srgb-v1",
+          "outputColorSpace": "sRGB"
+        },
+        {
+          "variantId": 2,
+          "artifactSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+          "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0",
+          "templateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backendQualificationSha256": "5cb789e0b62f5949deab5461bfd7cc1585558ffff6dc26fef23d8538c9e2d140",
+          "transformId": "synthetic-sharp-srgb-v1",
+          "outputColorSpace": "sRGB"
+        },
+        {
+          "variantId": 3,
+          "artifactSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+          "profileSha256": "ea6114b88a1486bd4e4cefe54e5fc997b19af7008ef96c9bdd3b0b81114521f0",
+          "templateSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "backendQualificationSha256": "5cb789e0b62f5949deab5461bfd7cc1585558ffff6dc26fef23d8538c9e2d140",
+          "transformId": "synthetic-sharp-srgb-v1",
+          "outputColorSpace": "sRGB"
+        }
+      ]
+    }
+  },
+  "visualBundle": {
+    "images": [
+      {
+        "id": "source-design",
+        "role": "source",
+        "relativePath": "images/source.png",
+        "sha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+        "width": 256,
+        "height": 256,
+        "variantId": null,
+        "derivedFromSha256": "6f3516220e134a67c5cf262e605b834e0a8851506a94826ca9f8c601cead9046",
+        "crop": null
+      },
+      {
+        "id": "reference-1",
+        "role": "reference",
+        "relativePath": "images/reference-1.png",
+        "sha256": "ff66e9e0e832f2dc21b95154a0bd26297250dff0b32a3ad75612d0bc029716c2",
+        "width": 512,
+        "height": 384,
+        "variantId": "1",
+        "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "crop": null
+      },
+      {
+        "id": "output-1",
+        "role": "output",
+        "relativePath": "images/output-1.png",
+        "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+        "width": 512,
+        "height": 384,
+        "variantId": "1",
+        "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+        "crop": null
+      },
+      {
+        "id": "detail-1-edge",
+        "role": "detail",
+        "relativePath": "images/detail-1-edge.png",
+        "sha256": "6b587916e9879ac2e19c26a60da83eb1ee42af88ef0be3cd84a50c4b3ab10f8d",
+        "width": 64,
+        "height": 64,
+        "variantId": "1",
+        "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+        "crop": {
+          "left": 221,
+          "top": 125,
+          "right": 285,
+          "bottom": 189
+        }
+      },
+      {
+        "id": "detail-1-center",
+        "role": "detail",
+        "relativePath": "images/detail-1-center.png",
+        "sha256": "ca2b7e1a5ba7c112e49dafb5cfe45ba35b20851b9dac7bd875a7db685c5db231",
+        "width": 96,
+        "height": 96,
+        "variantId": "1",
+        "derivedFromSha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+        "crop": {
+          "left": 94,
+          "top": 145,
+          "right": 190,
+          "bottom": 241
+        }
+      },
+      {
+        "id": "reference-2",
+        "role": "reference",
+        "relativePath": "images/reference-2.png",
+        "sha256": "aeea365039a89920e482327506b73f9a207f74c5864af5b5f74aece11a923455",
+        "width": 512,
+        "height": 384,
+        "variantId": "2",
+        "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "crop": null
+      },
+      {
+        "id": "output-2",
+        "role": "output",
+        "relativePath": "images/output-2.png",
+        "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+        "width": 512,
+        "height": 384,
+        "variantId": "2",
+        "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+        "crop": null
+      },
+      {
+        "id": "detail-2-edge",
+        "role": "detail",
+        "relativePath": "images/detail-2-edge.png",
+        "sha256": "aecc18a1c04068373005b005c32cb0f1eabf201a1a98eb65daf4321c0b1d595f",
+        "width": 64,
+        "height": 64,
+        "variantId": "2",
+        "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+        "crop": {
+          "left": 313,
+          "top": 125,
+          "right": 377,
+          "bottom": 189
+        }
+      },
+      {
+        "id": "detail-2-center",
+        "role": "detail",
+        "relativePath": "images/detail-2-center.png",
+        "sha256": "fa173c4462ea78fb1b2cfd81baaeb46ccf2e2fe90e760a20bd1d4def3d8eb6c6",
+        "width": 96,
+        "height": 96,
+        "variantId": "2",
+        "derivedFromSha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+        "crop": {
+          "left": 185,
+          "top": 145,
+          "right": 281,
+          "bottom": 241
+        }
+      },
+      {
+        "id": "reference-3",
+        "role": "reference",
+        "relativePath": "images/reference-3.png",
+        "sha256": "4ddcfafdb6f5d80b8ad2a52cc6ecd482c921ba5461e935b526f06593a32b2383",
+        "width": 512,
+        "height": 384,
+        "variantId": "3",
+        "derivedFromSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "crop": null
+      },
+      {
+        "id": "output-3",
+        "role": "output",
+        "relativePath": "images/output-3.png",
+        "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+        "width": 512,
+        "height": 384,
+        "variantId": "3",
+        "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+        "crop": null
+      },
+      {
+        "id": "detail-3-edge",
+        "role": "detail",
+        "relativePath": "images/detail-3-edge.png",
+        "sha256": "84a855dfe148ed393850c54facf50ad0e3f7a528ff3f5bf614d7b26c789bdda8",
+        "width": 64,
+        "height": 64,
+        "variantId": "3",
+        "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+        "crop": {
+          "left": 424,
+          "top": 125,
+          "right": 488,
+          "bottom": 189
+        }
+      },
+      {
+        "id": "detail-3-center",
+        "role": "detail",
+        "relativePath": "images/detail-3-center.png",
+        "sha256": "53083cefa7c24958d46b872be577825012f7ca74871ebab4dfde2d9e7b6a5f0a",
+        "width": 96,
+        "height": 96,
+        "variantId": "3",
+        "derivedFromSha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+        "crop": {
+          "left": 292,
+          "top": 145,
+          "right": 388,
+          "bottom": 241
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "variantId": "1",
+        "path": "images/output-1.png",
+        "sha256": "a02659af8744ba1dad1a28eacd019123679754230ac8679ffeefc0aec890aea8",
+        "bytes": 11855,
+        "width": 512,
+        "height": 384,
+        "format": "png",
+        "colorSpace": "sRGB"
+      },
+      {
+        "variantId": "2",
+        "path": "images/output-2.png",
+        "sha256": "99ee9972cba527a8d639712f200a008dedb9426a72b9989b3209e6df0a2bd9a3",
+        "bytes": 11274,
+        "width": 512,
+        "height": 384,
+        "format": "png",
+        "colorSpace": "sRGB"
+      },
+      {
+        "variantId": "3",
+        "path": "images/output-3.png",
+        "sha256": "624f7fe1119fc1d52f7c2f33e4520460ed1aba7cd61f542e651a8df8751c78d2",
+        "bytes": 11904,
+        "width": 512,
+        "height": 384,
+        "format": "png",
+        "colorSpace": "sRGB"
+      }
+    ],
+    "sourceFacts": [
+      "Cyan diagonals and a gold circular mark identify the source design.",
+      "All three outputs preserve the beige template background and dark product shadow."
+    ],
+    "seededDefect": null
+  },
+  "responseFault": null,
+  "preflightFault": null
+}

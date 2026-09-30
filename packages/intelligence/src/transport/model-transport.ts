@@ -1,6 +1,6 @@
 import type { ModelProfile } from '@ne-psd/contracts';
 
-export type MessageContent = string | ReadonlyArray<{ type: 'text' | 'image'; text?: string; bytes?: Uint8Array }>;
+export type MessageContent = string | ReadonlyArray<{ type: 'text'; text: string } | { type: 'image'; id: string; bytes: Uint8Array }>;
 export type TransportMessage = { role: 'system' | 'user'; content: MessageContent };
 export type SamplingSettings = { temperature: 0; seed?: number; stream?: false };
 export type TransportRequest = { profile: ModelProfile; sessionId: string; messages: readonly [TransportMessage, TransportMessage]; responseSchema: object; sampling: SamplingSettings; maxOutputBytes: number; maxOutputTokens: number; deadlineMs: number; expectedProviderRevision?: string | null; signal: AbortSignal };

@@ -7,7 +7,7 @@ export class ReviewGateError extends Error {
 }
 export type ReviewContext = {
   job: JobSpec; manifest: EvidenceBundleManifest; evidence: RenderEvidence; policy: ReviewPolicy; evidenceSha256: string;
-  profile: ModelProfile; sessionId: string; reviewId: string; promptSha256: string;
+  profile: ModelProfile; sessionId: string; reviewId: string; promptSha256: string; reviewerVersion: string;
   imageQualityPassed: boolean; attestationPassed: boolean; safeCleanup: boolean; admissibleCorrections: readonly string[];
 };
 const fail = (code: string, message: string): never => { throw new ReviewGateError(code, message); };
@@ -42,7 +42,7 @@ export function validateRuntimeDecision(input: unknown, context: ReviewContext):
   if (!parsed.success) return fail('REVIEW_MODEL_OUTPUT_INVALID', parsed.error.message);
   const decision = parsed.data;
   assertDeterministicReviewEvidence(context);
-  if (decision.reviewId !== context.reviewId || decision.jobId !== context.job.jobId || decision.assetId !== context.evidence.assetId || decision.attempt !== context.evidence.attempt || decision.evidenceSha256 !== context.evidenceSha256 || decision.sessionId !== context.sessionId || decision.promptSha256 !== context.promptSha256 || decision.reviewPolicySha256 !== context.policy.policySha256 || decision.modelId !== context.profile.modelId || canonicalize(decision.modelProvenance) !== canonicalize(context.profile.provenance)) fail('REVIEW_BINDING_MISMATCH', 'review response does not bind current session, model, policy and sealed evidence');
+  if (decision.reviewId !== context.reviewId || decision.jobId !== context.job.jobId || decision.assetId !== context.evidence.assetId || decision.attempt !== context.evidence.attempt || decision.evidenceSha256 !== context.evidenceSha256 || decision.sessionId !== context.sessionId || decision.promptSha256 !== context.promptSha256 || decision.reviewerVersion !== context.reviewerVersion || decision.reviewPolicySha256 !== context.policy.policySha256 || decision.modelId !== context.profile.modelId || canonicalize(decision.modelProvenance) !== canonicalize(context.profile.provenance)) fail('REVIEW_BINDING_MISMATCH', 'review response does not bind current session, model, policy and sealed evidence');
   const required = new Set<string>(MANDATORY_REQUIREMENTS.map((row) => row.id));
   const actual = decision.checks.map((check) => check.requirementId);
   if (actual.length !== required.size || new Set(actual).size !== required.size || actual.some((id) => !required.has(id))) fail('REVIEW_CHECK_SET_INVALID', 'all 15 mandatory checks must appear exactly once');
@@ -53,6 +53,17 @@ export function validateRuntimeDecision(input: unknown, context: ReviewContext):
     const id = String(index + 1);
     const artifact = context.evidence.artifacts[index];
     if (variant.variantId !== id || artifact?.variantId !== id || !variant.evidenceRefs.includes(artifact.path) || variant.reason.trim().length === 0) fail('REVIEW_VARIANT_BINDING_INVALID', `variant ${id} requires its own image and factual reason`);
+    if (variant.verdict === 'pass' && context.policy.visualGate === 'qualifiedVisionReviewer') {
+      const source = context.manifest.visionInputs.find((image) => image.role === 'source');
+      const reference = context.manifest.visionInputs.find((image) => image.role === 'reference' && image.variantId === id);
+      const details = context.manifest.visionInputs.filter((image) => image.role === 'detail' && image.variantId === id);
+      if (!source || !reference || details.length === 0 || !variant.evidenceRefs.includes(source.relativePath) ||
+          !variant.evidenceRefs.includes(reference.relativePath) || !details.some((image) => variant.evidenceRefs.includes(image.relativePath)))
+        fail('REVIEW_VARIANT_VISUAL_REFS_MISSING', `variant ${id} pass requires current source, reference and detail image citations`);
+    }
+    if (variant.verdict === 'pass' && context.policy.visualGate === 'humanPerAsset' &&
+        !context.manifest.files.some((file) => file.role === 'humanAttestation' && variant.evidenceRefs.includes(file.relativePath)))
+      fail('REVIEW_VARIANT_ATTESTATION_REF_MISSING', `variant ${id} pass requires current human attestation citation`);
   }
   const checksById = new Map(decision.checks.map((check) => [check.requirementId, check]));
   for (const id of hostChecks) if (checksById.get(id)?.result !== 'pass') fail('REVIEW_HOST_CHECK_CONTRADICTION', `model contradicted deterministic result for ${id}`);

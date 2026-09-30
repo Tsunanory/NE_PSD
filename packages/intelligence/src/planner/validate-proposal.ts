@@ -1,4 +1,4 @@
-import { ConfigurationProposalSchema, InspectionReportSchema, type ConfigurationProposal, type FitMode, type InspectionReport } from '@ne-psd/contracts';
+import { canonicalize, ConfigurationProposalSchema, InspectionReportSchema, OutputSpecSchema, type ConfigurationProposal, type FitMode, type InspectionReport, type OutputSpec } from '@ne-psd/contracts';
 
 export class ProposalValidationError extends Error { readonly code: string; constructor(code: string, message: string) { super(message); this.name = 'ProposalValidationError'; this.code = code; } }
 const finalKind = (candidate: InspectionReport['candidates'][number]) => candidate.selector.layerPath.at(-1)?.kind;
@@ -9,12 +9,22 @@ const route = (inspection: InspectionReport, from: string, to: string): boolean 
   const parents = (key: string) => { const out = new Set<string>(); let current: string | null = key; while (current && !out.has(current)) { out.add(current); const doc = docs.get(current); if (!doc || doc.parentKey === null || doc.viaLayer === null) break; current = doc.parentKey; } return out; };
   return parents(from).has(to) || parents(to).has(from);
 };
-export function validateProposal(inspectionInput: unknown, proposalInput: unknown, instructionEvidence: readonly string[] = [], requestedFitMode?: FitMode): ConfigurationProposal {
+export function validateProposal(inspectionInput: unknown, proposalInput: unknown, instructionEvidence: readonly string[] = [], requestedFitMode?: FitMode, requestedOutput: OutputSpec | null = null): ConfigurationProposal {
   const inspection = InspectionReportSchema.parse(inspectionInput); const proposal = ConfigurationProposalSchema.parse(proposalInput);
   const documents = new Map(inspection.documents.map((document) => [document.documentKey, document]));
   if (documents.size !== inspection.documents.length || inspection.documents.some((document) => (document.parentKey === null) !== (document.viaLayer === null) || (document.parentKey !== null && !documents.has(document.parentKey))) || inspection.candidates.some((candidate) => !documents.has(candidate.documentKey))) throw new ProposalValidationError('PROPOSAL_DOCUMENT_GRAPH_INVALID', 'inspection candidate or document route is not observed');
+  for (const start of documents.keys()) {
+    const seen = new Set<string>();
+    let current: string | null = start;
+    while (current !== null) {
+      if (seen.has(current)) throw new ProposalValidationError('PROPOSAL_DOCUMENT_GRAPH_INVALID', 'inspection document lineage contains a cycle');
+      seen.add(current);
+      current = documents.get(current)!.parentKey;
+    }
+  }
   if (proposal.inspectionId !== inspection.inspectionId) throw new ProposalValidationError('PROPOSAL_INSPECTION_MISMATCH', 'proposal inspection binding mismatch');
   if (requestedFitMode !== undefined && proposal.fitMode !== requestedFitMode) throw new ProposalValidationError('PROPOSAL_FIT_MUTATION', 'model changed the host-requested fit mode');
+  if (requestedOutput && proposal.status === 'proposed' && canonicalize(proposal.output) !== canonicalize(OutputSpecSchema.parse(requestedOutput))) throw new ProposalValidationError('PROPOSAL_OUTPUT_MUTATION', 'model changed the host-requested output specification');
   if (proposal.status === 'proposed' && (inspection.unresolvedLinks.length > 0 || inspection.documents.some((doc) => doc.sourceKind === 'unknown' || (doc.sourceKind === 'linked' && doc.source === null)))) throw new ProposalValidationError('PROPOSAL_LINKED_ISOLATION_UNRESOLVED', 'proposed configuration requires resolved linked-document isolation');
   if (proposal.status === 'blocked' && (inspection.unresolvedLinks.length > 0 || inspection.documents.some((doc) => doc.sourceKind === 'unknown' || (doc.sourceKind === 'linked' && doc.source === null))) && !proposal.missingFields.includes('qualification.linkedIsolation')) throw new ProposalValidationError('PROPOSAL_MISSING_LINKED_ISOLATION', 'blocked proposal must identify qualification.linkedIsolation');
   if (proposal.status === 'proposed' && inspection.capabilities === null) throw new ProposalValidationError('PROPOSAL_CAPABILITIES_MISSING', 'proposed configuration requires qualified capabilities');

@@ -39,6 +39,23 @@ describe('transport capability boundaries', () => {
     for (const key of ['artifactSha256', 'chatTemplateSha256', 'runtimeVersion', 'contextTokens', 'maxOutputTokens', 'supportsNonStreaming'] as const) { const mismatch = { ...matching, [key]: typeof matching[key] === 'string' ? 'mismatch' : typeof matching[key] === 'number' ? 1 : false }; await expect(new LocalRuntimeTransport(mismatch).invoke(request as never)).rejects.toThrow(/identity|provenance|limits|capabilities|unverified/i); }
     for (const capability of ['vision', 'tools', 'imageInput'] as const) { const mismatch = { ...matching, capabilities: { ...matching.capabilities, [capability]: false } }; await expect(new LocalRuntimeTransport(mismatch).invoke(request as never)).rejects.toThrow(/identity|provenance|limits|capabilities|unverified/i); }
   });
+  it('uses an explicitly injected local runtime bridge after exact handshake and validates its reply', async () => {
+    const profile = localProfile(); const request = requestFor(profile);
+    const handshake = { modelId: profile.modelId, artifactSha256: profile.provenance.artifactSha256, chatTemplateSha256: profile.provenance.chatTemplateSha256, revision: null, runtimeVersion: profile.provenance.runtimeVersion, jsonSchema: true, contextTokens: profile.contextTokens, maxOutputTokens: profile.maxOutputTokens, capabilities: { vision: true, tools: true, imageInput: true }, supportsNonStreaming: true };
+    let calls = 0;
+    const bridge = async (sent: any) => { calls++; return { raw: new Uint8Array([123, 125]), modelId: sent.profile.modelId, finishReason: 'stop' as const, usage: null, providerRevision: null, sessionId: sent.sessionId }; };
+    expect((await new LocalRuntimeTransport(handshake, bridge).invoke(request as never)).sessionId).toBe(request.sessionId);
+    expect(calls).toBe(1);
+    await expect(new LocalRuntimeTransport(handshake, async (sent: any) => ({ ...await bridge(sent), modelId: 'wrong' })).invoke(request as never)).rejects.toThrow(/identity/i);
+  });
+  it('uses only an explicitly injected Codex bridge with profile and revision binding', async () => {
+    const profile = ModelProfileSchema.parse({ profileId: 'codex-selected', provider: 'codex', modelId: 'codex-model', provenance: { kind: 'remote', provider: 'codex', modelId: 'codex-model', revision: 'r1', qualificationEvidencePath: 'evidence/codex.json' }, endpoint: 'codex-installed', quantization: null, contextTokens: 4096, maxOutputTokens: 512, capabilities: { jsonSchema: true, vision: true, tools: false } });
+    const request = requestFor(profile as never);
+    await expect(new CodexTransport().invoke(request as never)).rejects.toThrow(/unavailable/i);
+    const response = async (sent: any) => ({ raw: new Uint8Array([123, 125]), modelId: sent.profile.modelId, finishReason: 'stop' as const, usage: null, providerRevision: 'r1', sessionId: sent.sessionId });
+    expect((await new CodexTransport(response).invoke(request as never)).providerRevision).toBe('r1');
+    await expect(new CodexTransport(async (sent: any) => ({ ...await response(sent), providerRevision: 'r2' })).invoke(request as never)).rejects.toThrow(/revision/i);
+  });
   it('aborts the child signal when the deadline fires', async () => {
     let aborted = false; const fake = { invoke: async (request: { signal: AbortSignal }) => { request.signal.addEventListener('abort', () => { aborted = true; }); await new Promise((resolve) => setTimeout(resolve, 100)); return undefined as never; } } as never; await expect(invokeBounded(fake, requestFor())).rejects.toThrow(/deadline|timeout/i); expect(aborted).toBe(true);
   });

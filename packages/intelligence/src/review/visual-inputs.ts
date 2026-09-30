@@ -1,6 +1,7 @@
 import { sha256Bytes, type VisionInput } from '@ne-psd/contracts';
 import sharp from 'sharp';
 import type { RegisteredProfile } from '../profiles/profile-registry.js';
+import { trialMatches, type CandidateTrialAdmission } from '../profiles/candidate-trial.js';
 import type { MessageContent } from '../transport/model-transport.js';
 import { ReviewGateError } from './decision-validator.js';
 
@@ -10,11 +11,13 @@ const fail = (code: string, reason: string): never => { throw new ReviewGateErro
 const positive = (value: string | undefined) => { const n = Number(value); return Number.isSafeInteger(n) && n > 0 ? n : 0; };
 
 /** Only a registry-admitted image runtime with recorded packet limits can receive pixels. */
-export async function prepareVisionPayload(images: readonly SealedVisionImage[], record: RegisteredProfile, userText: string): Promise<{ content: MessageContent; imageIds: readonly string[] }> {
+export async function prepareVisionPayload(images: readonly SealedVisionImage[], record: RegisteredProfile, userText: string, trialAdmission?: CandidateTrialAdmission): Promise<{ content: MessageContent; imageIds: readonly string[] }> {
   const profile = record.profile;
-  const settings = record.qualification?.artifact?.runtimeSettings;
+  const trial = trialMatches(trialAdmission, record) && trialAdmission?.role === 'reviewer' ? trialAdmission : undefined;
+  const vision = trial?.probe.visionLimits;
+  const settings = vision ? { visionInputQualified: 'true', visionMaxImages: String(vision.maxImages), visionMaxWidth: String(vision.maxWidth), visionMaxHeight: String(vision.maxHeight), visionMaxPixels: String(vision.maxPixels), visionMaxTotalBytes: String(vision.maxBytes), visionMaxDecodedBytes: String(vision.maxDecodedBytes), visionMaxTotalDecodedBytes: String(vision.maxDecodedBytes * vision.maxImages) } : record.qualification?.artifact?.runtimeSettings;
   const maxImages = positive(settings?.visionMaxImages), maxWidth = positive(settings?.visionMaxWidth), maxHeight = positive(settings?.visionMaxHeight), maxPixels = positive(settings?.visionMaxPixels), maxTotalBytes = positive(settings?.visionMaxTotalBytes), maxDecodedBytes = positive(settings?.visionMaxDecodedBytes), maxTotalDecodedBytes = positive(settings?.visionMaxTotalDecodedBytes);
-  if (!record.selectable || !record.qualification?.runtimeQualified || !profile.capabilities.vision || settings?.visionInputQualified !== 'true' || !maxImages || !maxWidth || !maxHeight || !maxPixels || !maxTotalBytes || !maxDecodedBytes || !maxTotalDecodedBytes) fail('REVIEW_VISION_UNQUALIFIED', 'selected reviewer lacks measured image-input limits');
+  if (!(trial || (record.selectable && record.qualification?.runtimeQualified)) || !profile.capabilities.vision || settings?.visionInputQualified !== 'true' || !maxImages || !maxWidth || !maxHeight || !maxPixels || !maxTotalBytes || !maxDecodedBytes || !maxTotalDecodedBytes) fail('REVIEW_VISION_UNQUALIFIED', 'selected reviewer lacks measured image-input limits');
   if (images.length === 0 || images.length > maxImages) fail('REVIEW_IMAGE_LIMIT', 'complete image packet exceeds qualified image count');
   if (new Set(images.map((image) => image.id)).size !== images.length) fail('REVIEW_IMAGE_ID_DUPLICATE', 'image IDs must be unique');
   if (images.filter((image) => image.role === 'source').length < 1 || ids.some((id) => images.filter((image) => image.role === 'reference' && image.variantId === id).length < 1 || images.filter((image) => image.role === 'output' && image.variantId === id).length !== 1 || images.filter((image) => image.role === 'detail' && image.variantId === id).length < 1)) fail('REVIEW_IMAGE_COVERAGE', 'source and every reference, output and detail image are required');

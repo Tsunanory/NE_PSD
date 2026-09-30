@@ -57,7 +57,7 @@ describe('model profile qualification and selection', () => {
 
   it('fails closed for absent qualification and rejects text-only visual review', () => {
     const profile = local({ profileId: 'text-only', capabilities: { jsonSchema: true, vision: false, tools: true } });
-    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile, explicitSelection: true, qualification: qualification(profile) })).toThrow(/vision|qualified/i);
+    expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'review', profile, explicitSelection: true, qualification: qualification(profile) })).toThrow(/visual|qualified/i);
     expect(() => assertInvocationAllowed({ trigger: 'foreground', jobKind: 'planning', profile, explicitSelection: true })).toThrow(/qualified/i);
   });
 

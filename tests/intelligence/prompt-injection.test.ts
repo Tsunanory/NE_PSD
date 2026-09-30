@@ -46,7 +46,7 @@ describe('adapter prompt-injection boundary', () => {
         const transport = { invoke: async (request: any) => { calls.push(request); return reply(proposal(), request); } };
         const result = await proposeConfiguration({ inspection: report, instruction: 'Use contain', requestedFitMode: 'contain', modelProfileId: profile.profileId, registry: selected, transport, sessionId: 'planner-injection', signal: new AbortController().signal, tokenCounter });
         expect(result.targets[0].targetCandidateId).toBe('target'); expect(calls).toHaveLength(1);
-        assertBoundary(calls[0], { kind: 'configuration-proposal', schemaVersion: 1, instruction: 'Use contain', inspection: report, requestedFitMode: 'contain', instructionEvidence: [] }, prompt.text);
+        assertBoundary(calls[0], { kind: 'configuration-proposal', schemaVersion: 1, instruction: 'Use contain', inspection: report, requestedFitMode: 'contain', requestedOutput: null, instructionEvidence: [] }, prompt.text);
       });
     }
   }

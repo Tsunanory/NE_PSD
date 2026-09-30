@@ -17,7 +17,8 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-prompts.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck",
-    "verify:model": "node dist/cli/verify-model-runner.js"
+    "verify:model": "node dist/cli/verify-model-runner.js",
+    "qualify:model": "node dist/cli/qualify-model.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

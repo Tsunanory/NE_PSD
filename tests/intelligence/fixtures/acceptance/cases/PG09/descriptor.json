@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "foundationContractVersion": 1,
+  "id": "PG09",
+  "role": "planner",
+  "mode": "response-fault",
+  "input": {
+    "instruction": "Prepare a configuration proposal for this inspected synthetic template. Use only the inspected root target and reference candidates. Use inspected variant groups 1, 2, 3 exactly once each. Use contain fit. Export PNG at 512 by 384 pixels, sRGB, quality 100. Do not invent selectors or claim qualification from missing evidence.",
+    "requestedFitMode": "contain",
+    "requestedOutput": {
+      "format": "png",
+      "quality": 100,
+      "colorSpace": "sRGB",
+      "width": 512,
+      "height": 384
+    },
+    "inspection": {
+      "schemaVersion": 1,
+      "inspectionId": "inspection-corpus",
+      "evidenceStatus": "liveObserved",
+      "template": {
+        "rootId": "root",
+        "relativePath": "template.psd",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "capabilities": {
+        "backendId": "alisaitteke",
+        "version": "1",
+        "sourceCommit": "fixture",
+        "supportedFitModes": [
+          "cover",
+          "contain",
+          "stretch"
+        ],
+        "toolSchemaSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "platform": "darwin",
+        "photoshopVersion": "25",
+        "evidencePaths": [
+          "capabilities.json"
+        ]
+      },
+      "documents": [
+        {
+          "documentKey": "root",
+          "parentKey": null,
+          "viaLayer": null,
+          "sourceKind": "root",
+          "source": null,
+          "width": 512,
+          "height": 384,
+          "colorMode": "RGB",
+          "bitDepth": 8
+        }
+      ],
+      "candidates": [
+        {
+          "candidateId": "target",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "target",
+                "kind": "smartObject",
+                "fingerprint": "f-target"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "target"
+          ]
+        },
+        {
+          "candidateId": "reference",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "reference",
+                "kind": "shape",
+                "fingerprint": "f-reference"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "reference"
+          ]
+        },
+        {
+          "candidateId": "variant-1",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "variant-1",
+                "kind": "group",
+                "fingerprint": "f-variant-1"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-2",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "variant-2",
+                "kind": "group",
+                "fingerprint": "f-variant-2"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        },
+        {
+          "candidateId": "variant-3",
+          "documentKey": "root",
+          "selector": {
+            "documentRoute": [],
+            "layerPath": [
+              {
+                "name": "variant-3",
+                "kind": "group",
+                "fingerprint": "f-variant-3"
+              }
+            ]
+          },
+          "bounds": null,
+          "visible": true,
+          "clipped": false,
+          "belowCandidateId": null,
+          "roleHints": [
+            "variant"
+          ]
+        }
+      ],
+      "observedVariantStates": [],
+      "unresolvedLinks": [],
+      "evidencePaths": [
+        "inspection.json"
+      ]
+    },
+    "candidateProposal": {
+      "schemaVersion": 1,
+      "inspectionId": "inspection-corpus",
+      "status": "proposed",
+      "targets": [
+        {
+          "targetCandidateId": "target",
+          "referenceCandidateId": "reference",
+          "inputCandidateId": null
+        }
+      ],
+      "variants": [
+        {
+          "id": "1",
+          "groupCandidateId": "variant-1"
+        },
+        {
+          "id": "2",
+          "groupCandidateId": "variant-2"
+        },
+        {
+          "id": "3",
+          "groupCandidateId": "variant-3"
+        }
+      ],
+      "fitMode": "contain",
+      "output": {
+        "format": "png",
+        "quality": 100,
+        "colorSpace": "sRGB",
+        "width": 512,
+        "height": 384
+      },
+      "missingFields": [],
+      "facts": [
+        {
+          "claim": "Observed candidate selectors",
+          "evidenceRefs": [
+            "inspection.json"
+          ]
+        }
+      ],
+      "explanation": "Use observed graph"
+    },
+    "qualification": {
+      "profileId": "planner-candidate",
+      "runtimeContextTokens": 8192
+    }
+  },
+  "visualBundle": null,
+  "responseFault": {
+    "stage": "after-live-model-response",
+    "mutation": "fabricated-selector",
+    "field": "/targets/0/targetCandidateId",
+    "value": "fabricated"
+  },
+  "preflightFault": null
+}

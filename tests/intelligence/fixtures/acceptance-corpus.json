@@ -1,0 +1,1389 @@
+[
+  {
+    "id": "PG01",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG01/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "cover"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG02",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG02/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG03",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG03/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "stretch"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG04",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG04/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG05",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG05/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        },
+        {
+          "path": "/targets/1/targetCandidateId",
+          "value": "target-2"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG06",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG06/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        },
+        {
+          "path": "/output/width",
+          "value": 768
+        },
+        {
+          "path": "/output/height",
+          "value": 576
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG07",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG07/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG08",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG08/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG09",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG09/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "PROPOSAL_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG10",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG10/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "PROPOSAL_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG11",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG11/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "PROPOSAL_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "PG12",
+    "group": "planner-grounding",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/PG12/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "PROPOSAL_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "RR01",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR01/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "pass",
+      "requiredPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        },
+        {
+          "path": "/variantChecks/2/variantId",
+          "value": "3"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "blocked"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR02",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR02/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "pass",
+      "requiredPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        },
+        {
+          "path": "/variantChecks/2/variantId",
+          "value": "3"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "blocked"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR03",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR03/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "pass",
+      "requiredPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        },
+        {
+          "path": "/variantChecks/2/variantId",
+          "value": "3"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "blocked"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR04",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR04/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "pass",
+      "requiredPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        },
+        {
+          "path": "/variantChecks/2/variantId",
+          "value": "3"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "blocked"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR05",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR05/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR06",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR06/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR07",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR07/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR08",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR08/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR09",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR09/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR10",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR10/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR11",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR11/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR12",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR12/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR13",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR13/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR14",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR14/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR15",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR15/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR16",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR16/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR17",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR17/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR18",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR18/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR19",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR19/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "REVIEW_DECISION_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "RR20",
+    "group": "runtime-review",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/RR20/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "EVIDENCE_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "AJ01",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ01/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ02",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ02/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ03",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ03/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ04",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ04/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ05",
+    "group": "adversarial-json",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ05/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "AJ06",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ06/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ07",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ07/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ08",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ08/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ09",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ09/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "STRICT_JSON_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ10",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ10/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "STRICT_JSON_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ11",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ11/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "STRICT_JSON_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "AJ12",
+    "group": "adversarial-json",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/AJ12/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "STRICT_JSON_INVALID",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC01",
+    "group": "failure-context-capability",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC01/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "FC02",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC02/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "MODEL_REQUEST_ABORTED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC03",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC03/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "MODEL_ENDPOINT_UNAVAILABLE",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC04",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC04/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "proposed",
+      "requiredPaths": [
+        {
+          "path": "/fitMode",
+          "value": "contain"
+        },
+        {
+          "path": "/variants/0/id",
+          "value": "1"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/targets/0/targetCandidateId",
+          "value": "fabricated"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC05",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC05/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "CONTEXT_BUDGET_EXCEEDED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC06",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC06/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "CONTEXT_BUDGET_EXCEEDED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC07",
+    "group": "failure-context-capability",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC07/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "MODEL_RESPONSE_INCOMPLETE",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "FC08",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC08/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "MODEL_CAPABILITY_UNQUALIFIED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC09",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC09/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "MODEL_PROFILE_NOT_QUALIFIED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "FC10",
+    "group": "failure-context-capability",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC10/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "VISION_PROFILE_UNQUALIFIED",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "FC11",
+    "group": "failure-context-capability",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC11/descriptor.json",
+    "expected": {
+      "kind": "preflight-rejected",
+      "failureCode": "RUNTIME_QUALIFICATION_MISMATCH",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "FC12",
+    "group": "failure-context-capability",
+    "role": "planner",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/FC12/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "MODEL_IDENTITY_MISMATCH",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ]
+    },
+    "evidenceRequirement": "inspection.json"
+  },
+  {
+    "id": "DV01",
+    "group": "diagnostic-visual",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV01/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "DV02",
+    "group": "diagnostic-visual",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV02/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "DV03",
+    "group": "diagnostic-visual",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV03/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "DV04",
+    "group": "diagnostic-visual",
+    "role": "diagnostic",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV04/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "blocked",
+      "requiredPaths": [
+        {
+          "path": "/status",
+          "value": "blocked"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/actionCode",
+          "value": "RETRY_FRESH_COPY"
+        }
+      ]
+    },
+    "evidenceRequirement": "error.json"
+  },
+  {
+    "id": "DV05",
+    "group": "diagnostic-visual",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV05/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "DV06",
+    "group": "diagnostic-visual",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV06/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "DV07",
+    "group": "diagnostic-visual",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV07/descriptor.json",
+    "expected": {
+      "kind": "rejected",
+      "failureCode": "VISUAL_DEFECT",
+      "requiredPaths": [],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        }
+      ],
+      "criticalDefect": true
+    },
+    "evidenceRequirement": "reports/qa.json"
+  },
+  {
+    "id": "DV08",
+    "group": "diagnostic-visual",
+    "role": "reviewer",
+    "fixture": "tests/intelligence/fixtures/acceptance/cases/DV08/descriptor.json",
+    "expected": {
+      "kind": "admitted",
+      "status": "pass",
+      "requiredPaths": [
+        {
+          "path": "/verdict",
+          "value": "pass"
+        },
+        {
+          "path": "/variantChecks/2/variantId",
+          "value": "3"
+        }
+      ],
+      "prohibitedPaths": [
+        {
+          "path": "/verdict",
+          "value": "blocked"
+        }
+      ]
+    },
+    "evidenceRequirement": "reports/qa.json"
+  }
+]
