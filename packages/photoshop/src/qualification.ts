@@ -329,6 +329,9 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       }
       let cleanupFailure: unknown;
       if (!ambiguous) try { await clean(); } catch (error) { cleanupFailure = error; if (!adapter.lock.markUnknownMutation) barrierFailure ??= new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'cleanup failure cannot retain the recovery barrier', 'ambiguousState'); else try { await adapter.lock.markUnknownMutation(); } catch { barrierFailure ??= new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'cleanup failure barrier persistence failed', 'ambiguousState'); } }
+      // A persistence failure must escape the callback so the installation
+      // lock cannot treat a returned blocked result as a completed operation.
+      if (barrierFailure) throw barrierFailure;
       const primary = barrierFailure ?? cleanupFailure ?? cause; const source = primary && typeof primary === 'object' ? primary as Record<string, unknown> : {}; const failure = primary instanceof QualificationError ? primary : new QualificationError(typeof source.code === 'string' ? source.code : 'CLEANUP_FAILED', primary instanceof Error ? primary.message : typeof source.message === 'string' ? source.message : String(primary), (typeof source.category === 'string' && ['validation', 'capability', 'transient', 'ambiguousState', 'review', 'cancelled'].includes(source.category) ? source.category : 'ambiguousState') as DomainError['category'], typeof source.retryable === 'boolean' ? source.retryable : false, Array.isArray(source.evidencePaths) ? source.evidencePaths.filter((path): path is string => typeof path === 'string') : []); const existing = []; for (const path of evidencePaths) if (await canonicalExistingInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing, failure)], checks.map((check) => ({ ...check, passed: false })), existing);
     }
   };

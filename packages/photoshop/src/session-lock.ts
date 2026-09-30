@@ -225,9 +225,9 @@ export class SessionLock {
       let completed = false;
       try { const result = await fn(); completed = true; return result; } finally {
         await this.endCall();
-        if (this.owner?.operationId === acquired.operationId && !this.owner.unknownMutation) {
+        if (completed && this.owner?.operationId === acquired.operationId && !this.owner.unknownMutation) {
           const release = await this.release();
-          if (completed && !release.released) throw new SessionLockError('RECOVERY_REQUIRED', `operation completed without confirmed installation release: ${release.reason}`);
+          if (!release.released) throw new SessionLockError('RECOVERY_REQUIRED', `operation completed without confirmed installation release: ${release.reason}`);
         }
         else if (completed) throw new SessionLockError('RECOVERY_REQUIRED', 'operation completed while installation ownership remains uncertain');
       }
