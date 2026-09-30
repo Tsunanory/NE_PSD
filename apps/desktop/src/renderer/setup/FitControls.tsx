@@ -1,3 +1,21 @@
-import React from 'react'; import type { FitMode } from './setup-state.js';
-const explanations: Record<FitMode, string> = { cover: 'Заполнить область; края изображения могут быть обрезаны', contain: 'Вписать целиком; вокруг изображения может остаться свободное место', stretch: 'Растянуть по области; пропорции изменятся' };
-export function FitControls({ value, supported, onChange }: { value: FitMode; supported: readonly FitMode[]; onChange: (value: FitMode) => void }): React.ReactElement { return <fieldset><legend>Способ размещения</legend>{(['cover', 'contain', 'stretch'] as const).map((mode) => <label key={mode}><input type="radio" name="fit-mode" checked={value === mode} disabled={!supported.includes(mode)} onChange={() => onChange(mode)} />{mode}<span> — {explanations[mode]}</span>{!supported.includes(mode) && <small> Этот способ размещения не проверен для выбранного шаблона</small>}</label>)}</fieldset>; }
+import React from 'react';
+import type { FitMode } from './setup-state.js';
+
+const explanations: Record<FitMode, string> = {
+  cover: 'Заполнить область; края изображения могут быть обрезаны',
+  contain: 'Вписать целиком; вокруг изображения может остаться свободное место',
+  stretch: 'Растянуть по области; пропорции изменятся',
+};
+export function FitControls({ value, supported, onChange, onConfirm }: {
+  value: FitMode; supported: readonly FitMode[]; onChange: (value: FitMode) => void; onConfirm?: () => void;
+}): React.ReactElement {
+  return <fieldset>
+    <legend>Способ размещения</legend>
+    {(['cover', 'contain', 'stretch'] as const).map((mode) => <label key={mode}>
+      <input type="radio" name="fit-mode" checked={value === mode} disabled={!supported.includes(mode)} onChange={() => onChange(mode)} />
+      {mode}<span> — {explanations[mode]}</span>
+      {!supported.includes(mode) && <small> Этот способ размещения не проверен для выбранного шаблона</small>}
+    </label>)}
+    {onConfirm && <button type="button" disabled={!supported.includes(value)} onClick={onConfirm}>Подтвердить способ размещения</button>}
+  </fieldset>;
+}
