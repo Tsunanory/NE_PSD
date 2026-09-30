@@ -7,7 +7,7 @@ import { OperationJournal, RecoveryError, operationTimeoutMs, runUncertainOperat
 import type { CanonicalTraceWriter } from './trace.js';
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
-export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall, signal?: AbortSignal): Promise<unknown> };
+export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall, signal?: AbortSignal): Promise<unknown>; close?: () => Promise<void> };
 export type Trace = { requestId: string; toolName: string; arguments: unknown; outcome: 'acknowledged' | 'failed' | 'unknown'; errorCode?: string };
 export class McpClientError extends Error {
   constructor(
@@ -203,5 +203,6 @@ export async function createPinnedSdkTransport(launch: PinnedLaunchParameters): 
       }) };
     },
     callTool: async (request) => sdk.callTool(request),
+    close: async () => { await transport.close(); },
   };
 }
