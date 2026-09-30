@@ -10,7 +10,11 @@ files:
   - "dist/**"
 extraResources:
   - from: "../../packaging/staged/win32-x64"
-    to: "."
+    to: "bundle"
+  - from: "../../packaging/runtime-manifest.json"
+    to: "runtime-manifest.json"
+  - from: "../../packaging/runtime-manifest.mjs"
+    to: "runtime-manifest.mjs"
 win:
   target:
     - target: nsis
