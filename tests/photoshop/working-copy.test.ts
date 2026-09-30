@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, basename, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ import {
   type LinkedResource,
   type QualifiedLinkOperation,
 } from '../../packages/photoshop/src/working-copy.js';
+import { RecoveryError } from '../../packages/photoshop/src/recovery.js';
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
 
@@ -195,6 +196,40 @@ describe('working-copy isolation', () => {
     };
     await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'wrong-ack'), operation }))
       .rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH', evidence: { phase: 'copied-resource' } });
+  });
+
+  it.each(['relink', 'embed'] as const)('retains copied closure after ambiguous %s timeout', async (kind) => {
+    const f = await fixture();
+    const attemptRoot = join(f.working, `ambiguous-${kind}`);
+    const timeout = new RecoveryError('OPERATION_TIMEOUT', `${kind} reply lost`, 'ambiguousState', false);
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    if (kind === 'relink') operation.relink = async () => { throw timeout; };
+    else { delete operation.relink; operation.embed = async () => { throw timeout; }; }
+    const removed: string[] = [];
+    const filesystem = {
+      readFile, copy: copyFile, mkdir: async (path: string, options?: { recursive?: boolean }) => { await mkdir(path, options); },
+      exists: async (path: string) => readFile(path).then(() => true, () => false),
+      remove: async (path: string) => { removed.push(path); await rm(path, { recursive: true, force: true }); },
+    };
+    await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot, operation, filesystem })).rejects.toBe(timeout);
+    expect(removed).toEqual([]);
+    expect((await (await import('node:fs/promises')).readdir(attemptRoot)).length).toBe(2);
+    expect(await sha256(f.master)).toBe(digest('master'));
+    expect(await sha256(f.first)).toBe(digest('first'));
+  });
+
+  it('removes copied closure after a proven safe relink failure', async () => {
+    const f = await fixture();
+    const attemptRoot = join(f.working, 'safe-failure');
+    const operation = { readLinks: async (path: string): Promise<LinkedResource[]> => path === f.master ? [{ path: f.first, sourceKind: 'linked' }] : [] };
+    const removed: string[] = [];
+    const filesystem = {
+      readFile, copy: copyFile, mkdir: async (path: string, options?: { recursive?: boolean }) => { await mkdir(path, options); },
+      exists: async (path: string) => readFile(path).then(() => true, () => false),
+      remove: async (path: string) => { removed.push(path); await rm(path, { recursive: true, force: true }); },
+    };
+    await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot, operation, filesystem })).rejects.toMatchObject({ code: 'LINKED_SOURCE_UNISOLATED' });
+    expect(removed).toEqual([attemptRoot]);
   });
 
   it('supports injected Windows path semantics without embedding host paths', async () => {

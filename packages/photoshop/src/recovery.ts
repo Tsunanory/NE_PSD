@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, open, readFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, realpath } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import type { OperationKind } from './types.js';
 
@@ -317,7 +317,6 @@ export type RecoveryRuntime = {
   timeouts?: Partial<Record<string, number>>;
   onUnknown?: () => void | Promise<void>;
   clearPendingOperations?: () => void | Promise<void>;
-  canonicalPath?: (path: string) => string | Promise<string>;
 };
 
 export type RecoveryResult = { safe: boolean; evidencePaths: string[]; outstanding: string[]; ambiguous?: boolean; error?: { code: string; category: 'ambiguousState' | 'validation'; retryable: false; evidencePaths: string[] } };
@@ -330,6 +329,19 @@ const insideRoot = (root: string, path: string): boolean => {
   const child = relative(resolvedRoot, resolvedPath);
   return child === '' || (!child.startsWith('..') && !child.startsWith('/') && !child.includes(`..${sep}`));
 };
+
+async function ownedPathInside(root: string, path: string): Promise<boolean> {
+  if (!insideRoot(root, path)) return false;
+  try {
+    if ((await lstat(root)).isSymbolicLink()) return false;
+    let current = resolve(root);
+    for (const component of relative(current, resolve(path)).split(sep).filter(Boolean)) {
+      current = resolve(current, component);
+      if ((await lstat(current)).isSymbolicLink()) return false;
+    }
+    return insideRoot(await realpath(root), await realpath(path));
+  } catch { return false; }
+}
 
 function invalidRecovery(runtime: RecoveryRuntime, outstanding: string[], code: string, message: string, ambiguous = false): RecoveryResult {
   return { safe: false, evidencePaths: recoveryEvidence(runtime), outstanding, ...(ambiguous ? { ambiguous: true } : {}), error: { code, category: ambiguous ? 'ambiguousState' : 'validation', retryable: false, evidencePaths: recoveryEvidence(runtime) } };
@@ -376,7 +388,6 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
   try { documents = [...await guard('readLayers', runtime.listDocuments)]; } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], 'DOCUMENT_INVENTORY_FAILED', 'document inventory failed'); }
   const ledger = new Map((runtime.ownershipLedger ?? []).map((record) => [record.documentId, record]));
   const owned = documents.filter((document) => document.owned);
-  const canonical = async (path: string): Promise<string> => runtime.canonicalPath ? resolve(await runtime.canonicalPath(path)) : resolve(path);
   const ownedDocument = (id: string): boolean => {
     const document = documents.find((candidate) => candidate.id === id);
     const proof = ledger.get(id);
@@ -384,11 +395,11 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
   };
   for (const proof of ledger.values()) {
     const document = documents.find((candidate) => candidate.id === proof.documentId);
-    if (!document || !document.owned || !insideRoot(identity.jobRoot, proof.path) || !(await canonical(proof.path)).startsWith(`${await canonical(identity.jobRoot)}${sep}`) && (await canonical(proof.path)) !== await canonical(identity.jobRoot)) return invalidRecovery(runtime, [...outstanding, `ownership-ledger-mismatch:${proof.documentId}`], 'OWNERSHIP_LEDGER_MISMATCH', 'persisted ownership ledger does not match the live document inventory');
+    if (!document || !document.owned || !await ownedPathInside(identity.jobRoot, proof.path)) return invalidRecovery(runtime, [...outstanding, `ownership-ledger-mismatch:${proof.documentId}`], 'OWNERSHIP_LEDGER_MISMATCH', 'persisted ownership ledger does not match the live document inventory');
   }
   for (const document of owned) {
     const proof = ledger.get(document.id);
-    if (!proof || proof.jobId !== identity.jobId || proof.operationId !== identity.operationId || proof.hostId !== identity.hostId || proof.ownershipToken !== identity.ownershipToken || proof.installationDigest !== identity.installationDigest || !document.path || resolve(document.path) !== resolve(proof.path) || document.parentId !== proof.parentId || (document.depth ?? -1) !== proof.depth || !insideRoot(identity.jobRoot, proof.path) || (document.parentId !== null && !ownedDocument(document.parentId))) return invalidRecovery(runtime, [...outstanding, `ownership-unproven:${document.id}`], 'DOCUMENT_OWNERSHIP_UNPROVEN', 'document ownership, path, parent, or depth could not be proven');
+    if (!proof || proof.jobId !== identity.jobId || proof.operationId !== identity.operationId || proof.hostId !== identity.hostId || proof.ownershipToken !== identity.ownershipToken || proof.installationDigest !== identity.installationDigest || !document.path || resolve(document.path) !== resolve(proof.path) || document.parentId !== proof.parentId || (document.depth ?? -1) !== proof.depth || !await ownedPathInside(identity.jobRoot, proof.path) || (document.parentId !== null && !ownedDocument(document.parentId))) return invalidRecovery(runtime, [...outstanding, `ownership-unproven:${document.id}`], 'DOCUMENT_OWNERSHIP_UNPROVEN', 'document ownership, path, parent, or depth could not be proven');
     if (document.parentId !== null) {
       const parent = documents.find((candidate) => candidate.id === document.parentId);
       if (!parent || !ownedDocument(parent.id) || (parent.depth ?? -1) >= (document.depth ?? -1)) return invalidRecovery(runtime, [...outstanding, `parent-chain-invalid:${document.id}`], 'DOCUMENT_PARENT_CHAIN_INVALID', 'owned document parent chain is not canonical and ledger-valid');

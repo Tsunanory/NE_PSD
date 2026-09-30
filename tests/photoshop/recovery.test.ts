@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -209,6 +209,7 @@ describe('conservative Photoshop recovery', () => {
   it('closes only clean owned documents after idle certainty and preserves a foreign document', async () => {
     const closed: string[] = [];
     const journalRoot = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const jobRoot = join(journalRoot, 'job'); const childPath = join(jobRoot, 'child.psb'); await mkdir(jobRoot); await writeFile(childPath, 'child');
     const journalPath = join(journalRoot, 'journal.jsonl');
     const journal = new OperationJournal(journalPath, { jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64) });
     await journal.issued({ operation: 'readDocument', requestId: 'previous-read', mutation: false });
@@ -216,18 +217,40 @@ describe('conservative Photoshop recovery', () => {
     const runtime: RecoveryRuntime = {
       journal: { read: async () => [], filePath: journalPath }, journalPath,
       listDocuments: async () => [
-        { id: 'child', path: '/job/child.psb', owned: true, dirty: false, parentId: null, depth: 0 },
+        { id: 'child', path: childPath, owned: true, dirty: false, parentId: null, depth: 0 },
         { id: 'user', path: '/Users/user.psd', owned: false, dirty: true, parentId: null },
       ].filter((document) => !closed.includes(document.id)),
       isIdle: async () => true,
       verifyOriginals: async () => true,
       closeDiscard: async (id) => { closed.push(id); },
-      identity: { jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot: '/job' },
-      ownershipLedger: [{ documentId: 'child', jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), path: '/job/child.psb', parentId: null, depth: 0 }],
+      identity: { jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot },
+      ownershipLedger: [{ documentId: 'child', jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), path: childPath, parentId: null, depth: 0 }],
     };
     await expect(recoverJob('job-2', runtime, new AbortController().signal)).resolves.toMatchObject({ safe: true, outstanding: [] });
     expect(closed).toEqual(['child']);
     await rm(journalRoot, { recursive: true, force: true });
+  });
+
+  it('never closes an owned-looking symlink to a user document', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-symlink-'));
+    const jobRoot = join(root, 'job'); await mkdir(jobRoot);
+    const userPath = join(root, 'user.psd'); await writeFile(userPath, 'user original');
+    const childPath = join(jobRoot, 'child.psb'); await symlink(userPath, childPath);
+    const journalPath = join(root, 'journal.jsonl');
+    const identity = { jobId: 'job-symlink', operationId: 'op-symlink', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot };
+    const journal = new OperationJournal(journalPath, identity);
+    await journal.issued({ operation: 'readDocument', requestId: 'prior', mutation: false }); await journal.acknowledged('prior');
+    let closes = 0;
+    const runtime: RecoveryRuntime = {
+      journal: { read: () => journal.read(), filePath: journalPath }, identity,
+      listDocuments: async () => [{ id: 'child', path: childPath, owned: true, dirty: false, parentId: null, depth: 0 }],
+      isIdle: async () => true, verifyOriginals: async () => true,
+      closeDiscard: async () => { closes += 1; },
+      ownershipLedger: [{ documentId: 'child', ...identity, path: childPath, parentId: null, depth: 0 }],
+    };
+    await expect(recoverJob(identity.jobId, runtime, new AbortController().signal)).resolves.toMatchObject({ safe: false });
+    expect(closes).toBe(0); expect(await readFile(userPath, 'utf8')).toBe('user original');
+    await rm(root, { recursive: true, force: true });
   });
 
   it('returns a typed ambiguous result when a recovery primitive hangs', async () => {
@@ -276,15 +299,16 @@ describe('conservative Photoshop recovery', () => {
 
   it('rereads matching reconciled records before closing owned documents', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const jobRoot = join(root, 'job'); const childPath = join(jobRoot, 'owned.psb'); await mkdir(jobRoot); await writeFile(childPath, 'owned');
     const path = join(root, 'journal.jsonl');
-    const identity = { jobId: 'job-reconcile', operationId: 'op-reconcile', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot: '/job' };
+    const identity = { jobId: 'job-reconcile', operationId: 'op-reconcile', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot };
     const journal = new OperationJournal(path, identity);
     await journal.issued({ operation: 'saveChild', requestId: 'lost-save', mutation: true });
     await journal.unknown('lost-save', 'lost reply');
     let closed = false;
     const runtime: RecoveryRuntime = {
       journal: { read: () => journal.read(), filePath: path }, journalPath: path, identity,
-      listDocuments: async () => closed ? [] : [{ id: 'owned', path: '/job/owned.psb', owned: true, dirty: false, parentId: null, depth: 0 }],
+      listDocuments: async () => closed ? [] : [{ id: 'owned', path: childPath, owned: true, dirty: false, parentId: null, depth: 0 }],
       isIdle: async () => true, safeCompletion: async () => true, clearPendingOperations: async () => undefined,
       verifyOriginals: async () => true,
       closeDiscard: async () => {
@@ -292,7 +316,7 @@ describe('conservative Photoshop recovery', () => {
         expect(persisted.findLast((entry) => entry.requestId === 'lost-save')?.state).toBe('reconciled');
         closed = true;
       },
-      ownershipLedger: [{ documentId: 'owned', ...identity, path: '/job/owned.psb', parentId: null, depth: 0 }],
+      ownershipLedger: [{ documentId: 'owned', ...identity, path: childPath, parentId: null, depth: 0 }],
     };
     await expect(recoverJob(identity.jobId, runtime, new AbortController().signal)).resolves.toMatchObject({ safe: true, outstanding: [] });
     expect(closed).toBe(true);

@@ -151,7 +151,8 @@ const domainError = (code: string, message: string, category: DomainError['categ
 let activeQualificationOutput: NonNullable<QualificationRequest['proposal']['output']> | undefined;
 function validateQualificationRequest(request: QualificationRequest): ReturnType<typeof contractValidateQualificationRequest> { activeQualificationOutput = request.proposal.output ?? undefined; return contractValidateQualificationRequest(request); }
 const pathEscape = (path: string): boolean => path.includes('\0') || path.split(/[\\/]+/).includes('..');
-const within = (root: string, target: string): boolean => { const value = relative(root, target); return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value)); };
+export const withinCanonicalRoot = (root: string, target: string): boolean => { const value = relative(root, target); return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value)); };
+const within = withinCanonicalRoot;
 async function existingCanonical(path: string): Promise<string> { return realpath(path); }
 async function rootContains(roots: readonly string[], path: string, allowMissingLeaf = false): Promise<boolean> {
   if (path.includes('\0')) return false;
@@ -173,7 +174,7 @@ async function rootContains(roots: readonly string[], path: string, allowMissing
       }
       if (valid) return true;
     } else {
-      try { if (within(canonicalRoot.toLocaleLowerCase(), (await existingCanonical(path)).toLocaleLowerCase())) return true; } catch { /* missing path */ }
+      try { if (within(canonicalRoot, await existingCanonical(path))) return true; } catch { /* missing path */ }
     }
   }
   return false;

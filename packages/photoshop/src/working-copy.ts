@@ -224,6 +224,7 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
   if (selectedCanonical !== masterPath) originalHashes.set(selectedCanonical, selectedHash);
   const queue: Array<{ rawPath: string; canonicalPath: string; hash: string; sourceKind: LinkedResource['sourceKind'] | 'root'; descriptor?: LinkedResource; ancestors: readonly string[] }> = [{ rawPath: selectedPath, canonicalPath: selectedCanonical, hash: selectedHash, sourceKind: 'root', ancestors: [] }];
 
+  let mutationPending = false;
   try {
     while (queue.length) {
       const node = queue.shift()!;
@@ -275,12 +276,16 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
         for (const edge of nodeEdges) {
           const target = nodes.get(edge.originalPath) ?? nodes.get(canonicalAliases.get(edge.originalPath) ?? '');
           if (!target) throw linkedError('linked dependency was not copied', { parentPath: entry.copyPath, path: edge.originalPath });
+          mutationPending = true;
           const proof = await options.operation.relink(entry.copyPath, edge.originalPath, target.copyPath);
+          mutationPending = false;
           const exact = proof?.acknowledged === true && proof.parentPath === entry.copyPath && proof.originalSource === edge.originalPath && proof.jobOwnedSource === target.copyPath;
           mutationProofs.set(entry.originalPath, (mutationProofs.get(entry.originalPath) ?? true) && exact);
         }
       } else if (options.operation.embed) {
+        mutationPending = true;
         const proof = await options.operation.embed(entry.copyPath);
+        mutationPending = false;
         mutationProofs.set(entry.originalPath, proof?.acknowledged === true && proof.parentPath === entry.copyPath);
       } else {
         throw linkedError('no qualified embed or relink operation is available', { parentPath: entry.copyPath, path: entry.originalPath });
@@ -320,7 +325,8 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     const writable = (path: string): Promise<WritableTarget> => assertWritableTarget(path, attemptRoot, paths);
     return { attemptRoot, masterPath: rootEntry.copyPath, closure: [...nodes.values()], originalHashes, assertWritableTarget: writable };
   } catch (error) {
-    try { await fileSystem.remove?.(attemptRoot); } catch { /* best-effort cleanup */ }
+    const ambiguous = mutationPending || (typeof error === 'object' && error !== null && 'category' in error && error.category === 'ambiguousState');
+    if (!ambiguous) try { await fileSystem.remove?.(attemptRoot); } catch { /* best-effort cleanup */ }
     throw error;
   }
 }
