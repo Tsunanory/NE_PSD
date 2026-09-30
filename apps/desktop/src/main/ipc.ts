@@ -66,8 +66,9 @@ export function registerIpc(
   register('job.cancel', ({ jobId }: { jobId: string }) => services.jobs.cancel(jobId));
   register('job.snapshot', ({ jobId }: { jobId: string }) => services.jobs.snapshot(jobId));
   register('job.retryFailed', async ({ jobId }: { jobId: string }) => {
+    if (!sessions) throw new Error('job session unavailable');
     const successor = await services.jobs.retryFailed(jobId);
-    await sessions?.recordRetry(jobId, successor.jobId);
+    await sessions.recordRetry(jobId, successor.jobId);
     return successor;
   });
   register('job.visualReview', ({ jobId, assetId }: { jobId: string; assetId: string }) => services.jobs.visualReview(jobId, assetId));

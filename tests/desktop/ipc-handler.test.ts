@@ -41,6 +41,15 @@ describe('IPC handlers', () => {
     expect(handlers.has('dev.failFakeJob')).toBe(false);
     dispose();
   });
+  it('refuses a retry without a durable job session before calling the service', async () => {
+    const frame = { url: packagedRendererUrl() };
+    const sender = { mainFrame: frame };
+    const retryFailed = vi.fn(async () => ({ jobId: 'successor' }));
+    const dispose = registerIpc({ jobs: { retryFailed }, setup: {} } as never, 'production', () => sender as never);
+    await expect(handlers.get('job.retryFailed')!({ sender, senderFrame: frame }, { jobId: 'predecessor' })).rejects.toThrow();
+    expect(retryFailed).not.toHaveBeenCalled();
+    dispose();
+  });
   it('checks window/frame identity and canonical handles before invoking setup', async () => {
     const parent = mkdtempSync(join(tmpdir(), 'ne-psd-ipc-')); dirs.push(parent);
     const root = join(parent, 'template'); const outside = join(parent, 'outside');
