@@ -29,6 +29,7 @@ describe('trusted asset detail projection', () => {
     expect(detail.synthetic).toBe(true);
     expect(detail.attempts[0]?.verdict).toBe('pass');
     expect(detail.attempts[0]?.variants).toHaveLength(3);
+    expect(detail.attempts[0]?.checks[0]).toMatchObject({ requirementId: 'BINDING.CURRENT_ATTEMPT', result: 'pass' });
     expect(detail.attempts[0]?.variants[0]?.evidenceIds).toContain(id);
     expect(detail.attempts[0]?.diagnostics[0]?.summary).toContain('[path]');
     expect(JSON.stringify(detail)).not.toContain('assets/variant-1.jpg');

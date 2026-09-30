@@ -33,6 +33,7 @@ export function registerIpc(
 ): () => void {
   const channels: IpcChannel[] = [];
   const subscriptions = new Map<string, { sender: WebContents; dispose: () => void }>();
+  let closeRequested = false;
   const controller = (): SetupController => {
     if (!setupController) throw new Error('native setup controller unavailable');
     return setupController;
@@ -140,6 +141,7 @@ export function registerIpc(
       return started;
     });
     register('dev.completeFakeJob', async ({ jobId }: { jobId: string }) => { await (services.jobs as FakeJobService).completeFakeJob(jobId); });
+    register('dev.failFakeJob', async ({ jobId }: { jobId: string }) => { await (services.jobs as FakeJobService).failFakeJob(jobId); });
     register('dev.fakeJobMetrics', async ({ jobId }: { jobId: string }) => {
       const fake = services.jobs as FakeJobService;
       const snapshot = await fake.snapshot(jobId);
@@ -147,9 +149,12 @@ export function registerIpc(
     });
   }
   register('app.diagnostic', () => ({ available: false }));
-  register('app.safeClose', () => {
+  register('app.safeClose', async () => {
     if (!sessions) throw new Error('job session unavailable');
-    return sessions.safeClose();
+    if (closeRequested) return;
+    await sessions.safeClose();
+    closeRequested = true;
+    setImmediate(() => app.quit());
   });
   return () => {
     for (const channel of channels) ipcMain.removeHandler(channel);

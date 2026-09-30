@@ -15,6 +15,7 @@ export type AssetDetail = {
   attempts: Array<{
     attempt: 1 | 2; reviewId: string; verdict: 'pass' | 'revise' | 'blocked';
     variants: Array<{ variantId: '1' | '2' | '3'; verdict: 'pass' | 'fail' | 'unknown'; evidenceIds: string[] }>;
+    checks: Array<{ requirementId: string; result: 'pass' | 'fail' | 'unknown'; evidenceIds: string[]; reason: string }>;
     evidenceIds: string[];
     diagnostics: Array<{ evidenceId: string; code: string; summary: string }>;
   }>;
@@ -22,6 +23,7 @@ export type AssetDetail = {
 
 const digest = (value: string): boolean => /^[0-9a-f]{64}$/.test(value);
 const safeCode = (value: string): boolean => /^[A-Z][A-Z0-9_]{0,63}$/.test(value);
+const safeRequirement = (value: string): boolean => /^[A-Z][A-Z0-9_.]{0,99}$/.test(value);
 function redact(summary: string): string {
   return summary.slice(0, 1024)
     .replace(/(?:file:\/\/|[A-Za-z]:[\\/]|\/)[^\s,;"']+/g, '[path]')
@@ -55,6 +57,9 @@ export async function readAssetDetail(jobs: JobService, adapter: JobDetailAdapte
       ...review.checks.flatMap((check) => ids(check.evidenceRefs)),
       ...review.findings.flatMap((finding) => ids(finding.evidenceRefs)),
     ])];
+    if (review.checks.length > 100 || review.checks.some((check) => !safeRequirement(check.requirementId))) {
+      throw new Error('review checks are not bounded');
+    }
     if (record.diagnostics.length > 20) throw new Error('too many diagnostics');
     const diagnostics = record.diagnostics.map((item) => {
       if (!digest(item.evidenceId) || !evidenceIds.includes(item.evidenceId) || !safeCode(item.code) || item.summary.length > 4096) {
@@ -65,6 +70,8 @@ export async function readAssetDetail(jobs: JobService, adapter: JobDetailAdapte
     return {
       attempt: review.attempt, reviewId: review.reviewId, verdict: review.verdict,
       variants: review.variantChecks.map((check) => ({ variantId: check.variantId, verdict: check.verdict, evidenceIds: ids(check.evidenceRefs) })),
+      checks: review.checks.map((check) => ({ requirementId: check.requirementId, result: check.result,
+        evidenceIds: ids(check.evidenceRefs), reason: redact(check.reason) })),
       evidenceIds, diagnostics,
     };
   });

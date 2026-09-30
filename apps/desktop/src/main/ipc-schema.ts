@@ -35,6 +35,7 @@ const assetDetailSchema = z.object({
   available: z.boolean(), synthetic: z.boolean(), attempts: z.array(z.object({
     attempt: z.union([z.literal(1), z.literal(2)]), reviewId: id, verdict: z.enum(['pass', 'revise', 'blocked']),
     variants: z.array(z.object({ variantId: z.enum(['1', '2', '3']), verdict: z.enum(['pass', 'fail', 'unknown']), evidenceIds: z.array(z.string().regex(/^[0-9a-f]{64}$/)) }).strict()).length(3),
+    checks: z.array(z.object({ requirementId: z.string().regex(/^[A-Z][A-Z0-9_.]{0,99}$/), result: z.enum(['pass', 'fail', 'unknown']), evidenceIds: z.array(z.string().regex(/^[0-9a-f]{64}$/)), reason: z.string().max(1024) }).strict()).max(100),
     evidenceIds: z.array(z.string().regex(/^[0-9a-f]{64}$/)),
     diagnostics: z.array(z.object({ evidenceId: z.string().regex(/^[0-9a-f]{64}$/), code: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/), summary: z.string().max(1024) }).strict()).max(20),
   }).strict()).max(2),
@@ -64,6 +65,7 @@ export const ipcRequests = {
   'setup.start': empty,
   'dev.startFakeCorpus': z.object({ count: z.number().int().min(1).max(10_000) }).strict(),
   'dev.completeFakeJob': job,
+  'dev.failFakeJob': job,
   'dev.fakeJobMetrics': job,
   'app.diagnostic': empty,
   'app.safeClose': empty,
@@ -94,7 +96,7 @@ export const ipcResponses = {
   'setup.inspectModel': z.object({ available: z.boolean(), errors }).strict(),
   'setup.qualifyModel': z.object({ qualified: z.boolean(), evidencePaths: z.array(id), errors }).strict(),
   'setup.start': job,
-  'dev.startFakeCorpus': job, 'dev.completeFakeJob': z.null(),
+  'dev.startFakeCorpus': job, 'dev.completeFakeJob': z.null(), 'dev.failFakeJob': z.null(),
   'dev.fakeJobMetrics': z.object({ activeSubscriptions: z.number().int().nonnegative(), lastSequence: z.number().int().nonnegative(), eventCount: z.number().int().nonnegative(), state: id, complete: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict(),
   'app.diagnostic': z.object({ available: z.boolean() }).strict(),
   'app.safeClose': z.null(),
@@ -122,7 +124,7 @@ type Requests = {
   'setup.selectModels': { plannerProfileId: string; reviewerProfileId: string };
   'setup.inspectModel': { profile: ModelProfile }; 'setup.qualifyModel': { profile: ModelProfile };
   'setup.start': Record<string, never>;
-  'dev.startFakeCorpus': { count: number }; 'dev.completeFakeJob': { jobId: string }; 'dev.fakeJobMetrics': { jobId: string };
+  'dev.startFakeCorpus': { count: number }; 'dev.completeFakeJob': { jobId: string }; 'dev.failFakeJob': { jobId: string }; 'dev.fakeJobMetrics': { jobId: string };
   'app.diagnostic': Record<string, never>;
   'app.safeClose': Record<string, never>;
 };
@@ -146,7 +148,7 @@ type Responses = {
   'setup.inspectModel': { available: boolean; errors: DomainError[] };
   'setup.qualifyModel': { qualified: boolean; evidencePaths: string[]; errors: DomainError[] };
   'setup.start': { jobId: string };
-  'dev.startFakeCorpus': { jobId: string }; 'dev.completeFakeJob': void;
+  'dev.startFakeCorpus': { jobId: string }; 'dev.completeFakeJob': void; 'dev.failFakeJob': void;
   'dev.fakeJobMetrics': { activeSubscriptions: number; lastSequence: number; eventCount: number; state: string; complete: number; total: number };
   'app.diagnostic': { available: boolean };
   'app.safeClose': void;
@@ -204,6 +206,7 @@ export type BridgeApi = {
   startSetupJob(): Promise<{ jobId: string }>;
   startFakeCorpus?: (request: Requests['dev.startFakeCorpus']) => Promise<{ jobId: string }>;
   completeFakeJob?: (request: Requests['dev.completeFakeJob']) => Promise<void>;
+  failFakeJob?: (request: Requests['dev.failFakeJob']) => Promise<void>;
   fakeJobMetrics?: (request: Requests['dev.fakeJobMetrics']) => Promise<Responses['dev.fakeJobMetrics']>;
   diagnostic(request: Requests['app.diagnostic']): Promise<Responses['app.diagnostic']>;
   safeClose(): Promise<void>;
@@ -235,6 +238,7 @@ export function createBridgeApi(transport: BridgeTransport, includeDev = false):
     ...(includeDev ? {
       startFakeCorpus: (request: Requests['dev.startFakeCorpus']) => call('dev.startFakeCorpus', request),
       completeFakeJob: (request: Requests['dev.completeFakeJob']) => call('dev.completeFakeJob', request),
+      failFakeJob: (request: Requests['dev.failFakeJob']) => call('dev.failFakeJob', request),
       fakeJobMetrics: (request: Requests['dev.fakeJobMetrics']) => call('dev.fakeJobMetrics', request),
     } : {}),
   diagnostic: (request) => call('app.diagnostic', request),

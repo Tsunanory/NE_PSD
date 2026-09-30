@@ -8,16 +8,39 @@ import { RootRegistry } from '../../apps/desktop/src/main/paths.js';
 import { packagedRendererUrl } from '../../apps/desktop/src/main/window.js';
 
 const handlers = vi.hoisted(() => new Map<string, (event: unknown, payload: unknown) => Promise<unknown>>());
+const quit = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({ ipcMain: {
   handle: (channel: string, handler: (event: unknown, payload: unknown) => Promise<unknown>) => handlers.set(channel, handler),
   removeHandler: (channel: string) => handlers.delete(channel),
-} }));
+}, app: { quit, isPackaged: false } }));
 import { registerIpc } from '../../apps/desktop/src/main/ipc.js';
 
 const dirs: string[] = [];
-afterEach(() => { handlers.clear(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { handlers.clear(); quit.mockClear(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 describe('IPC handlers', () => {
+  it('requests application quit only after a successful safe close', async () => {
+    const frame = { url: packagedRendererUrl() };
+    const sender = { mainFrame: frame, isDestroyed: () => false, send: vi.fn(), once: vi.fn() };
+    const event = { sender, senderFrame: frame };
+    const safeClose = vi.fn().mockRejectedValueOnce(new Error('ambiguous Photoshop state')).mockResolvedValue(undefined);
+    const dispose = registerIpc({ jobs: {}, setup: {} } as never, 'production', () => sender as never,
+      new RootRegistry(), undefined, { safeClose } as never);
+    await expect(handlers.get('app.safeClose')!(event, {})).rejects.toThrow();
+    expect(quit).not.toHaveBeenCalled();
+    await expect(handlers.get('app.safeClose')!(event, {})).resolves.toBeNull();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(quit).toHaveBeenCalledTimes(1);
+    await handlers.get('app.safeClose')!(event, {});
+    expect(safeClose).toHaveBeenCalledTimes(2);
+    dispose();
+  });
+
+  it('does not register the fake failure driver in production', () => {
+    const dispose = registerIpc({ jobs: {}, setup: {}, developmentFake: true } as never, 'production');
+    expect(handlers.has('dev.failFakeJob')).toBe(false);
+    dispose();
+  });
   it('checks window/frame identity and canonical handles before invoking setup', async () => {
     const parent = mkdtempSync(join(tmpdir(), 'ne-psd-ipc-')); dirs.push(parent);
     const root = join(parent, 'template'); const outside = join(parent, 'outside');
