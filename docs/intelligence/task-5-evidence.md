@@ -2,7 +2,7 @@
 
 Scope: fixed corpus runner, resource sampler/gates, and foreground CLI in assigned C5 files. Node 22.23.2, npm 10.9.8. The actual model artifact, live transport capability, Windows host, and Photoshop workload are not present in this packet.
 
-Fresh local checks after changes:
+Initial packet checks (the final verification follows below):
 
 ```text
 npm run build --workspace @ne-psd/intelligence                   PASS
