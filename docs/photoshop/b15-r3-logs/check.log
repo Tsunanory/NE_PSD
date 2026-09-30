@@ -1,0 +1,43 @@
+
+> ne-psd@0.1.0 check
+> npm run check --workspaces --if-present
+
+
+> @ne-psd/contracts@0.1.0 check
+> npm run typecheck
+
+
+> @ne-psd/contracts@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> @ne-psd/core@0.1.0 check
+> npm run typecheck
+
+
+> @ne-psd/core@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> @ne-psd/photoshop@0.1.0 check
+> npm run typecheck
+
+
+> @ne-psd/photoshop@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> @ne-psd/intelligence@0.1.0 check
+> npm run typecheck
+
+
+> @ne-psd/intelligence@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+
+> @ne-psd/desktop@0.1.0 check
+> npm run typecheck
+
+
+> @ne-psd/desktop@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit

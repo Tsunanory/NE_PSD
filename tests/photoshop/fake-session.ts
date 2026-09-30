@@ -69,6 +69,18 @@ export class FakeSession {
     });
   }
 
+  async execute(operation: OperationKind, documentId: string | null, layerId: string | null, mutate: () => void = () => undefined): Promise<void> {
+    await this.run(operation, documentId, layerId, mutate);
+  }
+
+  async closeOwned(): Promise<void> {
+    for (const document of [...this.scene.documents].reverse()) {
+      await this.run('closeDiscard', document.id, null, () => {
+        this.scene.documents = this.scene.documents.filter((candidate) => candidate.id !== document.id);
+      });
+    }
+  }
+
   private async run(operation: OperationKind, documentId: string | null, layerId: string | null, mutate: () => void): Promise<void> {
     const requestId = `request-${++this.requestSerial}`;
     const startedAt = new Date().toISOString();

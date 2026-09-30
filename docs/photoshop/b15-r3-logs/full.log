@@ -1,0 +1,12 @@
+
+> ne-psd@0.1.0 test:photoshop
+> vitest run --config tests/photoshop/vitest.config.ts
+
+
+ RUN  v4.1.11 /Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/photoshop
+
+
+ Test Files  18 passed (18)
+      Tests  191 passed (191)
+   Start at  18:59:58
+   Duration  4.15s (transform 2.32s, setup 0ms, import 11.44s, tests 8.71s, environment 4ms)
