@@ -17,6 +17,41 @@ import type { PhotoshopBackend } from './services.js';
 const AttemptSchema = z.union([z.literal(1), z.literal(2)]);
 const StagingDirectoryV2Schema = AbsolutePathSchema.refine((value) => !value.split(/[\\/]/).includes('..'), 'staging directory cannot traverse a parent');
 const ProofRefSchema = z.object({ relativePath: RelativePathSchema, sha256: Sha256Schema }).strict();
+const ProofIdentityV2Schema = z.object({
+  schemaVersion: z.literal(2), jobId: NonEmptyStringSchema, assetId: NonEmptyStringSchema,
+  attempt: AttemptSchema, operationId: NonEmptyStringSchema,
+}).strict();
+const CopyProofEntryV2Schema = z.object({
+  original: FileRefSchema, ownedRelativePath: RelativePathSchema, bytes: PositiveIntSchema,
+  originalBeforeSha256: Sha256Schema, originalAfterSha256: Sha256Schema,
+  copyBeforeSha256: Sha256Schema, copyAfterSha256: Sha256Schema,
+}).strict();
+const ObservedLinkV2Schema = z.object({
+  parentOwnedRelativePath: RelativePathSchema, childOwnedRelativePath: RelativePathSchema,
+  identity: NonEmptyStringSchema,
+}).strict();
+const LinkedCopyProofEntryV2Schema = CopyProofEntryV2Schema.extend({ identity: NonEmptyStringSchema, sourceKind: z.literal('linked') }).strict();
+export const OwnedInputProofV2Schema = ProofIdentityV2Schema.extend({
+  sourceRootIdentity: Sha256Schema, openedSourceRelativePath: RelativePathSchema,
+  source: CopyProofEntryV2Schema, dependencies: z.array(LinkedCopyProofEntryV2Schema),
+  observedLinks: z.array(ObservedLinkV2Schema), closureProof: ProofRefSchema,
+}).strict();
+export type OwnedInputProofV2 = z.infer<typeof OwnedInputProofV2Schema>;
+export const TemplateClosureProofV2Schema = ProofIdentityV2Schema.extend({
+  template: FileRefSchema, workingTemplateRelativePath: RelativePathSchema,
+  closureEntries: z.array(CopyProofEntryV2Schema.extend({ identity: NonEmptyStringSchema, sourceKind: z.enum(['template', 'linked']) }).strict()).min(1),
+  observedLinks: z.array(ObservedLinkV2Schema), documentTrace: ProofRefSchema,
+}).strict();
+export type TemplateClosureProofV2 = z.infer<typeof TemplateClosureProofV2Schema>;
+export const ReleaseProofV2Schema = ProofIdentityV2Schema.extend({
+  released: z.literal(true), ownerIdentitySha256: Sha256Schema, journalSha256: Sha256Schema,
+  ownerSnapshot: ProofRefSchema, journalSnapshot: ProofRefSchema,
+}).strict().superRefine((proof, context) => {
+  if (proof.ownerIdentitySha256 !== proof.ownerSnapshot.sha256 || proof.journalSha256 !== proof.journalSnapshot.sha256 || proof.ownerSnapshot.relativePath === proof.journalSnapshot.relativePath) {
+    context.addIssue({ code: 'custom', path: ['ownerSnapshot'], message: 'release digests must bind distinct saved owner and journal bytes' });
+  }
+});
+export type ReleaseProofV2 = z.infer<typeof ReleaseProofV2Schema>;
 const OwnedFileSchema = z.object({ relativePath: RelativePathSchema, sha256: Sha256Schema, bytes: PositiveIntSchema }).strict();
 const LinkedDependencySchema = OwnedFileSchema.extend({
   identity: NonEmptyStringSchema,
@@ -163,6 +198,70 @@ export type RecoveryResultV2 = z.infer<typeof RecoveryResultV2Schema>;
 function mismatch(message: string) { return { success: false as const, error: new Error(message) }; }
 function sameFileRef(left: z.infer<typeof FileRefSchema>, right: z.infer<typeof FileRefSchema>): boolean {
   return left.rootId === right.rootId && left.relativePath === right.relativePath && left.sha256 === right.sha256;
+}
+function sameProofIdentity(actual: z.infer<typeof ProofIdentityV2Schema>, expected: z.infer<typeof ProofIdentityV2Schema>): boolean {
+  return actual.jobId === expected.jobId && actual.assetId === expected.assetId && actual.attempt === expected.attempt && actual.operationId === expected.operationId;
+}
+function unchangedOriginal(entry: z.infer<typeof CopyProofEntryV2Schema>): boolean {
+  return entry.originalBeforeSha256 === entry.original.sha256 && entry.originalAfterSha256 === entry.original.sha256 && entry.copyBeforeSha256 === entry.original.sha256;
+}
+function linksCoverEntries(links: z.infer<typeof ObservedLinkV2Schema>[], entries: Array<{ identity: string; ownedRelativePath: string }>, parentPaths: Set<string>): boolean {
+  const remaining = new Map(entries.map((entry) => [entry.identity, entry.ownedRelativePath]));
+  if (remaining.size !== entries.length || links.length !== entries.length) return false;
+  for (const link of links) {
+    if (!parentPaths.has(link.parentOwnedRelativePath) || remaining.get(link.identity) !== link.childOwnedRelativePath) return false;
+    remaining.delete(link.identity);
+  }
+  return remaining.size === 0;
+}
+
+export function validateOwnedInputProofV2(proof: unknown, request: unknown, manifest: unknown) {
+  const render = validateRenderRequestV2(request, manifest);
+  if (!render.success) return render;
+  const parsed = OwnedInputProofV2Schema.safeParse(proof);
+  if (!parsed.success) return parsed;
+  const actual = parsed.data;
+  const expected = render.data;
+  const owned = expected.ownedInput;
+  if (!sameProofIdentity(actual, { schemaVersion: 2, jobId: expected.jobId, assetId: expected.asset.assetId, attempt: expected.attempt, operationId: expected.operationId }) ||
+      actual.sourceRootIdentity !== owned.sourceRootIdentity || actual.openedSourceRelativePath !== owned.source.relativePath ||
+      !sameFileRef(actual.source.original, expected.asset.source) || actual.source.ownedRelativePath !== owned.source.relativePath || actual.source.bytes !== owned.source.bytes ||
+      !unchangedOriginal(actual.source) || actual.dependencies.length !== owned.dependencies.length ||
+      actual.closureProof.relativePath !== owned.closureProof.relativePath || actual.closureProof.sha256 !== owned.closureProof.sha256) return mismatch('owned input proof does not bind the opened source and prepared closure');
+  const dependencies = new Map(owned.dependencies.map((entry) => [entry.identity, entry]));
+  for (const entry of actual.dependencies) {
+    const expectedEntry = dependencies.get(entry.identity);
+    if (!expectedEntry || !sameFileRef(entry.original, expectedEntry.original) || entry.ownedRelativePath !== expectedEntry.relativePath || entry.bytes !== expectedEntry.bytes || !unchangedOriginal(entry)) return mismatch('owned input proof dependency differs from prepared inventory');
+  }
+  const paths = new Set([actual.source.ownedRelativePath, ...actual.dependencies.map((entry) => entry.ownedRelativePath)]);
+  if (!linksCoverEntries(actual.observedLinks, actual.dependencies, paths)) return mismatch('observed asset links do not cover prepared dependencies');
+  return { success: true as const, data: actual };
+}
+
+export function validateTemplateClosureProofV2(proof: unknown, request: unknown) {
+  const parsedRequest = RenderRequestV2Schema.safeParse(request);
+  if (!parsedRequest.success) return parsedRequest;
+  const parsed = TemplateClosureProofV2Schema.safeParse(proof);
+  if (!parsed.success) return parsed;
+  const actual = parsed.data;
+  const expected = parsedRequest.data;
+  if (!sameProofIdentity(actual, { schemaVersion: 2, jobId: expected.jobId, assetId: expected.asset.assetId, attempt: expected.attempt, operationId: expected.operationId }) || !sameFileRef(actual.template, expected.profile.template)) return mismatch('template closure proof identity differs from render request');
+  const templateEntries = actual.closureEntries.filter((entry) => entry.sourceKind === 'template');
+  if (templateEntries.length !== 1 || !sameFileRef(templateEntries[0]!.original, actual.template) || templateEntries[0]!.ownedRelativePath !== actual.workingTemplateRelativePath) return mismatch('template closure proof lacks the opened template copy');
+  if (actual.closureEntries.some((entry) => !unchangedOriginal(entry))) return mismatch('template closure proof does not preserve originals');
+  const linked = actual.closureEntries.filter((entry) => entry.sourceKind === 'linked');
+  const paths = new Set(actual.closureEntries.map((entry) => entry.ownedRelativePath));
+  if (paths.size !== actual.closureEntries.length || !linksCoverEntries(actual.observedLinks, linked, paths)) return mismatch('template closure links do not match copied inventory');
+  return { success: true as const, data: actual };
+}
+
+export function validateReleaseProofV2(proof: unknown, identity: unknown) {
+  const expected = ProofIdentityV2Schema.safeParse(identity);
+  if (!expected.success) return expected;
+  const parsed = ReleaseProofV2Schema.safeParse(proof);
+  if (!parsed.success) return parsed;
+  if (!sameProofIdentity(parsed.data, expected.data)) return mismatch('release proof operation identity mismatch');
+  return { success: true as const, data: parsed.data };
 }
 
 export function validatePreparedInputManifestV2(manifest: unknown, request: unknown) {

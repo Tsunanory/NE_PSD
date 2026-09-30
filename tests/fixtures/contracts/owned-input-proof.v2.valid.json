@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "jobId": "job-1",
+  "attempt": 1,
+  "operationId": "job-1:asset-1:1",
+  "assetId": "asset-1",
+  "sourceRootIdentity": "1111111111111111111111111111111111111111111111111111111111111111",
+  "openedSourceRelativePath": "scratch/input/source.png",
+  "source": {
+    "original": {
+      "rootId": "fixture-root",
+      "relativePath": "assets/source.png",
+      "sha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03"
+    },
+    "ownedRelativePath": "scratch/input/source.png",
+    "bytes": 18,
+    "originalBeforeSha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03",
+    "originalAfterSha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03",
+    "copyBeforeSha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03",
+    "copyAfterSha256": "30991f5a4836e18dcbcef7b9e4656aa62910d47e42c9aeb7d3194a3a86372f03"
+  },
+  "dependencies": [
+    {
+      "original": {
+        "rootId": "fixture-root",
+        "relativePath": "assets/linked.psb",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "ownedRelativePath": "scratch/input/linked.psb",
+      "bytes": 32,
+      "originalBeforeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "originalAfterSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "copyBeforeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "copyAfterSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "identity": "linked-1",
+      "sourceKind": "linked"
+    }
+  ],
+  "observedLinks": [
+    {
+      "parentOwnedRelativePath": "scratch/input/source.png",
+      "childOwnedRelativePath": "scratch/input/linked.psb",
+      "identity": "linked-1"
+    }
+  ],
+  "closureProof": {
+    "relativePath": "checks/linked-closure.json",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}
