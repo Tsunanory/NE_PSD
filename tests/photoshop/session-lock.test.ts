@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join, normalize, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SessionLock, type SessionLockOptions } from '../../packages/photoshop/src/session-lock.js';
 
 const options = (lockPath: string, overrides: Partial<SessionLockOptions> = {}): SessionLockOptions => ({
@@ -177,6 +177,41 @@ describe('Photoshop installation session lock', () => {
     unblock();
     await first; await second;
     expect(maximumInFlight).toBe(1);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('does not return operation success when persisted release is refused', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
+    const lock = new SessionLock(options(join(root, 'photoshop.lock')));
+    await expect(lock.runExclusive('job-a', async () => {
+      await lock.markDocumentsUnreconciled();
+      return 'rendered';
+    })).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
+    expect((await lock.tryAcquire({ jobId: 'job-b' })).acquired).toBe(false);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('does not return safe recovery or reconciliation success when release is refused', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
+    const lockPath = join(root, 'photoshop.lock');
+    const lock = new SessionLock(options(lockPath));
+    await lock.acquire({ jobId: 'job-a' });
+    await lock.markDocumentsUnreconciled();
+    await expect(lock.runRecovery(async () => ({ safe: true }))).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
+    await lock.reconcile();
+    const other = new SessionLock(options(lockPath));
+    await other.acquire({ jobId: 'job-b' });
+    await other.markTransportPending();
+    await expect(other.reconcile()).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('rejects reconciliation when release reports failure after state updates', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-lock-'));
+    const lock = new SessionLock(options(join(root, 'photoshop.lock')));
+    await lock.acquire({ jobId: 'job-a' });
+    vi.spyOn(lock, 'release').mockResolvedValue({ released: false, reason: 'RECOVERY_REQUIRED' });
+    await expect(lock.reconcile()).rejects.toMatchObject({ code: 'RECOVERY_REQUIRED' });
     await rm(root, { recursive: true, force: true });
   });
 });

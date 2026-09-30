@@ -208,8 +208,13 @@ describe('conservative Photoshop recovery', () => {
 
   it('closes only clean owned documents after idle certainty and preserves a foreign document', async () => {
     const closed: string[] = [];
+    const journalRoot = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const journalPath = join(journalRoot, 'journal.jsonl');
+    const journal = new OperationJournal(journalPath, { jobId: 'job-2', operationId: 'op-2', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64) });
+    await journal.issued({ operation: 'readDocument', requestId: 'previous-read', mutation: false });
+    await journal.acknowledged('previous-read');
     const runtime: RecoveryRuntime = {
-      journal: { read: async () => [] },
+      journal: { read: async () => [], filePath: journalPath }, journalPath,
       listDocuments: async () => [
         { id: 'child', path: '/job/child.psb', owned: true, dirty: false, parentId: null, depth: 0 },
         { id: 'user', path: '/Users/user.psd', owned: false, dirty: true, parentId: null },
@@ -222,12 +227,18 @@ describe('conservative Photoshop recovery', () => {
     };
     await expect(recoverJob('job-2', runtime, new AbortController().signal)).resolves.toMatchObject({ safe: true, outstanding: [] });
     expect(closed).toEqual(['child']);
+    await rm(journalRoot, { recursive: true, force: true });
   });
 
   it('returns a typed ambiguous result when a recovery primitive hangs', async () => {
     let marked = false;
+    const journalRoot = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const journalPath = join(journalRoot, 'journal.jsonl');
+    const journal = new OperationJournal(journalPath, { jobId: 'job-timeout', operationId: 'op-timeout', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64) });
+    await journal.issued({ operation: 'readDocument', requestId: 'previous-read', mutation: false });
+    await journal.acknowledged('previous-read');
     const runtime: RecoveryRuntime = {
-      journal: { read: async () => [] },
+      journal: { read: async () => [], filePath: journalPath }, journalPath,
       listDocuments: async () => new Promise<RecoveryDocument[]>(() => undefined),
       isIdle: async () => true,
       verifyOriginals: async () => true,
@@ -239,6 +250,53 @@ describe('conservative Photoshop recovery', () => {
     };
     await expect(recoverJob('job-timeout', runtime, new AbortController().signal)).resolves.toMatchObject({ safe: false, ambiguous: true, error: { category: 'ambiguousState' } });
     expect(marked).toBe(true);
+    await rm(journalRoot, { recursive: true, force: true });
+  });
+
+  it('retains owned documents when unknown operations lack safe completion', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const path = join(root, 'journal.jsonl');
+    const identity = { jobId: 'job-unknown', operationId: 'op-unknown', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot: '/job' };
+    const journal = new OperationJournal(path, identity);
+    await journal.issued({ operation: 'saveChild', requestId: 'lost-save', mutation: true });
+    await journal.unknown('lost-save', 'lost reply');
+    let closes = 0;
+    const runtime: RecoveryRuntime = {
+      journal: { read: () => journal.read(), filePath: path }, journalPath: path, identity,
+      listDocuments: async () => [{ id: 'owned', path: '/job/owned.psb', owned: true, dirty: false, parentId: null, depth: 0 }],
+      isIdle: async () => true, safeCompletion: async () => false, verifyOriginals: async () => true,
+      closeDiscard: async () => { closes += 1; },
+      ownershipLedger: [{ documentId: 'owned', ...identity, path: '/job/owned.psb', parentId: null, depth: 0 }],
+    };
+    await expect(recoverJob(identity.jobId, runtime, new AbortController().signal)).resolves.toMatchObject({ safe: false, error: { code: 'SAFE_COMPLETION_UNPROVEN' } });
+    expect(closes).toBe(0);
+    expect((await new OperationJournal(path, identity).read()).findLast((entry) => entry.requestId === 'lost-save')?.state).toBe('unknown');
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('rereads matching reconciled records before closing owned documents', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ne-psd-recovery-journal-'));
+    const path = join(root, 'journal.jsonl');
+    const identity = { jobId: 'job-reconcile', operationId: 'op-reconcile', hostId: 'host-a', ownershipToken: 'token-a', installationDigest: 'a'.repeat(64), jobRoot: '/job' };
+    const journal = new OperationJournal(path, identity);
+    await journal.issued({ operation: 'saveChild', requestId: 'lost-save', mutation: true });
+    await journal.unknown('lost-save', 'lost reply');
+    let closed = false;
+    const runtime: RecoveryRuntime = {
+      journal: { read: () => journal.read(), filePath: path }, journalPath: path, identity,
+      listDocuments: async () => closed ? [] : [{ id: 'owned', path: '/job/owned.psb', owned: true, dirty: false, parentId: null, depth: 0 }],
+      isIdle: async () => true, safeCompletion: async () => true, clearPendingOperations: async () => undefined,
+      verifyOriginals: async () => true,
+      closeDiscard: async () => {
+        const persisted = await new OperationJournal(path, identity).read();
+        expect(persisted.findLast((entry) => entry.requestId === 'lost-save')?.state).toBe('reconciled');
+        closed = true;
+      },
+      ownershipLedger: [{ documentId: 'owned', ...identity, path: '/job/owned.psb', parentId: null, depth: 0 }],
+    };
+    await expect(recoverJob(identity.jobId, runtime, new AbortController().signal)).resolves.toMatchObject({ safe: true, outstanding: [] });
+    expect(closed).toBe(true);
+    await rm(root, { recursive: true, force: true });
   });
 
   it('reconciles and releases only after backend recovery proves safe', async () => {

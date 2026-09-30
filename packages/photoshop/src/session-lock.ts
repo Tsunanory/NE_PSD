@@ -189,7 +189,10 @@ export class SessionLock {
   async reconcile(): Promise<void> {
     if (this.owner?.unsettledOperations !== 0) throw new SessionLockError('RECOVERY_REQUIRED', 'cannot reconcile while an underlying transport promise is unresolved');
     await this.update((m) => { m.unknownMutation = false; m.reconciledJobOwnedDocuments = true; });
-    if (this.owner?.inFlight === 0) await this.release();
+    if (this.owner?.inFlight === 0) {
+      const release = await this.release();
+      if (!release.released) throw new SessionLockError('RECOVERY_REQUIRED', `reconciliation did not release the installation lock: ${release.reason}`);
+    }
   }
   async clearRecoveryBarrier(): Promise<void> { await this.reconcile(); }
   async markDocumentsUnreconciled(): Promise<void> { await this.update((m) => { m.reconciledJobOwnedDocuments = false; }); }
@@ -206,7 +209,10 @@ export class SessionLock {
     } finally {
       await this.endCall();
       const safe = result !== undefined && typeof result === 'object' && result !== null && (result as { safe?: unknown }).safe === true;
-      if (safe && this.owner && !this.owner.unknownMutation && this.owner.reconciledJobOwnedDocuments) await this.release();
+      if (safe) {
+        const release = await this.release();
+        if (!release.released) throw new SessionLockError('RECOVERY_REQUIRED', `safe recovery did not release the installation lock: ${release.reason}`);
+      }
     }
   }
 
@@ -216,9 +222,14 @@ export class SessionLock {
       if (signal?.aborted) throw new SessionLockError('CANCELLED', 'operation cancelled while queued');
       const acquired = await this.acquire({ operationId });
       await this.beginCall();
-      try { return await fn(); } finally {
+      let completed = false;
+      try { const result = await fn(); completed = true; return result; } finally {
         await this.endCall();
-        if (this.owner?.operationId === acquired.operationId && !this.owner.unknownMutation) await this.release();
+        if (this.owner?.operationId === acquired.operationId && !this.owner.unknownMutation) {
+          const release = await this.release();
+          if (completed && !release.released) throw new SessionLockError('RECOVERY_REQUIRED', `operation completed without confirmed installation release: ${release.reason}`);
+        }
+        else if (completed) throw new SessionLockError('RECOVERY_REQUIRED', 'operation completed while installation ownership remains uncertain');
       }
     };
     const result = this.queue.then(run, run);

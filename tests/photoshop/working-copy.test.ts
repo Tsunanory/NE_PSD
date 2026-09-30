@@ -164,6 +164,39 @@ describe('working-copy isolation', () => {
       .rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH', evidence: { phase: 'post-isolation' } });
   });
 
+  it('accepts an explicitly expected job-owned parent mutation while rehashing originals and child copies', async () => {
+    const f = await fixture();
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    operation.relink = async (parent, originalSource, jobOwnedSource) => { await writeFile(parent, 'relinked-job-owned-parent'); operation.calls!.push({ parent, original: originalSource, copy: jobOwnedSource }); return { acknowledged: true, parentPath: parent, originalSource, jobOwnedSource }; };
+    const result = await createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'expected-parent-mutation'), operation });
+    expect(await sha256(f.master)).toBe(digest('master'));
+    expect(await sha256(f.first)).toBe(digest('first'));
+    expect(await readFile(result.masterPath, 'utf8')).toBe('relinked-job-owned-parent');
+  });
+
+  it('rejects a corrupted child even when the parent relink is acknowledged', async () => {
+    const f = await fixture();
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    operation.relink = async (parent, originalSource, jobOwnedSource) => {
+      await writeFile(parent, 'relinked-job-owned-parent');
+      await writeFile(jobOwnedSource, 'corrupted child');
+      return { acknowledged: true, parentPath: parent, originalSource, jobOwnedSource };
+    };
+    await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'corrupt-child'), operation }))
+      .rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH', evidence: { phase: 'copied-resource' } });
+  });
+
+  it('rejects a changed parent with a reply for the wrong job-owned path', async () => {
+    const f = await fixture();
+    const operation = links({ [f.master]: [{ path: f.first, sourceKind: 'linked' }], [f.first]: [] });
+    operation.relink = async (parent, originalSource, jobOwnedSource) => {
+      await writeFile(parent, 'relinked-job-owned-parent');
+      return { acknowledged: true, parentPath: `${parent}-other`, originalSource, jobOwnedSource };
+    };
+    await expect(createWorkingCopy({ masterPath: f.master, trustedRoot: f.trustedRoot, attemptRoot: join(f.working, 'wrong-ack'), operation }))
+      .rejects.toMatchObject({ code: 'SOURCE_HASH_MISMATCH', evidence: { phase: 'copied-resource' } });
+  });
+
   it('supports injected Windows path semantics without embedding host paths', async () => {
     const master = 'C:\\job\\мастер.psd';
     const first = 'C:\\job\\dep\\one\\shared.psb';

@@ -82,7 +82,13 @@ export class OperationJournal {
   private unsettledRequests = new Set<string>();
   constructor(filePath?: string, identity?: Partial<JournalIdentity>) {
     this.currentPath = filePath;
-    this.identityValue = { ...defaultIdentity, ...identity };
+    this.identityValue = {
+      jobId: identity?.jobId ?? defaultIdentity.jobId,
+      operationId: identity?.operationId ?? defaultIdentity.operationId,
+      hostId: identity?.hostId ?? defaultIdentity.hostId,
+      ownershipToken: identity?.ownershipToken ?? defaultIdentity.ownershipToken,
+      installationDigest: identity?.installationDigest ?? defaultIdentity.installationDigest,
+    };
   }
   get filePath(): string | undefined { return this.currentPath; }
   get identity(): JournalIdentity { return { ...this.identityValue }; }
@@ -92,7 +98,7 @@ export class OperationJournal {
   }
   bindIdentity(identity: Partial<JournalIdentity>): void {
     if (this.entries.length > 0 && Object.entries(identity).some(([key, value]) => value !== undefined && value !== this.identityValue[key as keyof JournalIdentity])) throw new RecoveryError('JOURNAL_IDENTITY_CHANGE_UNSAFE', 'journal identity cannot change after append', 'ambiguousState', false);
-    Object.assign(this.identityValue, identity);
+    for (const key of ['jobId', 'operationId', 'hostId', 'ownershipToken', 'installationDigest'] as const) if (identity[key] !== undefined) this.identityValue[key] = identity[key];
   }
 
   async issued(input: { operation: string; requestId: string; mutation: boolean }): Promise<JournalEntry> {
@@ -116,7 +122,7 @@ export class OperationJournal {
     return this.append({ ...this.requestMeta(requestId), requestId, state: 'reconciled' });
   }
 
-  async read(): Promise<JournalEntry[]> {
+  async read(allowMissing = false): Promise<JournalEntry[]> {
     if (this.currentPath) {
       try {
         const text = await readFile(this.currentPath, 'utf8');
@@ -136,10 +142,10 @@ export class OperationJournal {
         this.sequence = parsed.reduce((max, entry) => Math.max(max, Number(entry.sequence)), this.sequence);
         for (const entry of parsed) this.requests.set(entry.requestId, { operation: entry.operation, mutation: entry.mutation });
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          if (error instanceof RecoveryError) throw error;
-          throw new RecoveryError('JOURNAL_CORRUPT', 'journal could not be parsed or read', 'ambiguousState', false);
-        }
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT' && allowMissing) return this.entries.map((entry) => ({ ...entry }));
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new RecoveryError('JOURNAL_MISSING', 'persisted journal is missing', 'ambiguousState', false);
+        if (error instanceof RecoveryError) throw error;
+        throw new RecoveryError('JOURNAL_CORRUPT', 'journal could not be parsed or read', 'ambiguousState', false);
       }
     }
     return this.entries.map((entry) => ({ ...entry }));
@@ -168,7 +174,7 @@ export class OperationJournal {
 
   private async append(input: JournalDraft): Promise<JournalEntry> {
     if (!OPERATIONS.has(input.operation as OperationKind) || !nonEmpty(input.requestId) || (input.reason !== undefined && !nonEmpty(input.reason))) throw new RecoveryError('JOURNAL_CORRUPT', 'journal append contains invalid operation metadata', 'ambiguousState', false);
-    if (this.currentPath && this.entries.length === 0 && this.sequence === 0) await this.read();
+    if (this.currentPath && this.entries.length === 0 && this.sequence === 0) await this.read(true);
     const priorState = this.entries.filter((entry) => entry.requestId === input.requestId).at(-1)?.state;
     if (!priorState && input.state !== 'issued') throw new RecoveryError('JOURNAL_TRANSITION_INVALID', 'journal operation must begin with issued', 'ambiguousState', false);
     if (priorState && !((priorState === 'issued' && ['acknowledged', 'failedSafe', 'unknown'].includes(input.state)) || (priorState === 'unknown' && input.state === 'reconciled'))) throw new RecoveryError('JOURNAL_TRANSITION_INVALID', 'journal state transition is illegal', 'ambiguousState', false);
@@ -296,7 +302,8 @@ export type RecoveryIdentity = JournalIdentity & { jobRoot: string };
 export type RecoveryOwnershipRecord = { documentId: string; jobId: string; operationId: string; hostId: string; ownershipToken: string; installationDigest: string; path: string; parentId: string | null; depth: number };
 export type RecoveryDocument = { id: string; path: string | null; owned: boolean; dirty: boolean; parentId: string | null; depth?: number };
 export type RecoveryRuntime = {
-  journal: { read: () => Promise<JournalEntry[]> };
+  journal: { read: () => Promise<JournalEntry[]>; filePath?: string };
+  journalPath?: string;
   listDocuments: () => Promise<readonly RecoveryDocument[]>;
   isIdle: () => Promise<boolean>;
   safeCompletion?: () => Promise<boolean>;
@@ -332,15 +339,19 @@ function invalidRecovery(runtime: RecoveryRuntime, outstanding: string[], code: 
 export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signal: AbortSignal): Promise<RecoveryResult> {
   const identity = runtime.identity;
   if (!identity || identity.jobId !== _jobId || !identity.operationId || !identity.hostId || !identity.ownershipToken || !validDigest(identity.installationDigest) || !identity.jobRoot) return invalidRecovery(runtime, ['ownership-identity-missing'], 'RECOVERY_OWNERSHIP_MISMATCH', 'recovery requires a matching persisted job and installation identity');
-  const primitiveJournal = runtime.operationJournal ?? new OperationJournal(undefined, identity);
+  const persistedJournalPath = runtime.operationJournal?.filePath ?? runtime.journalPath ?? runtime.journal.filePath;
+  if (!persistedJournalPath) return invalidRecovery(runtime, ['journal-path-missing'], 'JOURNAL_PERSISTENCE_REQUIRED', 'recovery requires a persisted runtime journal path');
+  if (runtime.operationJournal && Object.entries(runtime.operationJournal.identity).some(([key, value]) => value !== identity[key as keyof JournalIdentity])) return invalidRecovery(runtime, ['journal-identity-mismatch'], 'JOURNAL_IDENTITY_MISMATCH', 'runtime journal identity differs from recovery owner', true);
+  const primitiveJournal = runtime.operationJournal ?? new OperationJournal(persistedJournalPath, identity);
   const guard = async <T>(operation: string, call: () => Promise<T>): Promise<T> => runUncertainOperation({ operation, requestId: `recovery-${operation}-${globalThis.crypto.randomUUID()}`, mutation: operation === 'closeDiscard', journal: primitiveJournal, timeoutMs: runtime.timeouts?.[operation] ?? runtime.timeoutMs ?? operationTimeoutMs(operation), signal, onUnknown: runtime.onUnknown, call });
   if (signal.aborted) return invalidRecovery(runtime, ['cancelled'], 'CANCELLED', 'recovery cancelled before dispatch');
   let entries: JournalEntry[];
   // Journal bytes are the persisted authority and must be read before adding
   // recovery's own primitive records; otherwise the read guard would make
   // its synthetic issued record look like an unresolved user operation.
-  try { entries = await (runtime.operationJournal ? runtime.operationJournal.read() : runtime.journal.read()); }
+  try { entries = await primitiveJournal.read(); }
   catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, ['journal-read-failed'], error.code, error.message, true); return invalidRecovery(runtime, ['journal-read-failed'], 'JOURNAL_READ_FAILED', 'journal could not be read'); }
+  if (entries.length === 0) return invalidRecovery(runtime, ['journal-empty'], 'JOURNAL_PROOF_MISSING', 'empty journal is not persisted operation proof', true);
   if (entries.some((entry) => entry.jobId !== identity.jobId || entry.operationId !== identity.operationId || entry.hostId !== identity.hostId || entry.ownershipToken !== identity.ownershipToken || entry.installationDigest !== identity.installationDigest)) return invalidRecovery(runtime, ['journal-identity-mismatch'], 'JOURNAL_IDENTITY_MISMATCH', 'journal operation identity does not match recovery owner');
   const outstanding = new Set<string>();
   for (const entry of entries) {
@@ -351,6 +362,16 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
     if (!(await guard('readDocument', runtime.isIdle))) return invalidRecovery(runtime, [...outstanding, 'idle-proof-failed'], 'IDLE_PROOF_FAILED', 'Photoshop is not independently proven idle');
     if (outstanding.size > 0 && (!runtime.safeCompletion || !(await guard('readDocument', runtime.safeCompletion)))) return invalidRecovery(runtime, [...outstanding, 'safe-completion-failed'], 'SAFE_COMPLETION_UNPROVEN', 'unknown operations lack a qualified safe-completion proof');
   } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'idle-proof-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'idle-proof-failed'], 'IDLE_PROOF_FAILED', 'idle proof failed'); }
+  if (outstanding.size > 0) {
+    if (!runtime.clearPendingOperations) return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], 'PENDING_OPERATIONS_UNRESOLVED', 'safe completion did not clear pending transport operations');
+    try {
+      await runtime.clearPendingOperations();
+      await primitiveJournal.reconcile();
+      const persisted = await new OperationJournal(persistedJournalPath, identity).read();
+      const terminal = new Map(persisted.map((entry) => [entry.requestId, entry.state]));
+      if ([...outstanding].some((id) => terminal.get(id) !== 'reconciled') || persisted.some((entry) => entry.state === 'issued' || entry.state === 'unknown' ? terminal.get(entry.requestId) === entry.state : false)) throw new RecoveryError('PENDING_OPERATIONS_UNRESOLVED', 'persisted journal does not prove terminal reconciliation', 'ambiguousState', false);
+    } catch (error) { return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], error instanceof RecoveryError ? error.code : 'PENDING_OPERATIONS_UNRESOLVED', 'pending operations could not be durably reconciled', true); }
+  }
   let documents: RecoveryDocument[];
   try { documents = [...await guard('readLayers', runtime.listDocuments)]; } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'document-inventory-failed'], 'DOCUMENT_INVENTORY_FAILED', 'document inventory failed'); }
   const ledger = new Map((runtime.ownershipLedger ?? []).map((record) => [record.documentId, record]));
@@ -387,13 +408,6 @@ export async function recoverJob(_jobId: string, runtime: RecoveryRuntime, signa
   } catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'cleanup-inventory-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'cleanup-inventory-failed'], 'CLEANUP_INVENTORY_FAILED', 'post-cleanup document inventory failed'); }
   try { if (!(await guard('readDocument', runtime.verifyOriginals))) return invalidRecovery(runtime, [...outstanding, 'original-hash-mismatch'], 'ORIGINAL_HASH_MISMATCH', 'original or dependency hashes changed'); }
   catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'original-hash-verification-failed'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'original-hash-verification-failed'], 'ORIGINAL_HASH_FAILED', 'original hash verification failed'); }
-  if (outstanding.size > 0) {
-    if (!runtime.clearPendingOperations) return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], 'PENDING_OPERATIONS_UNRESOLVED', 'safe completion did not provide a persisted pending-operation reconciliation');
-    try { await guard('readDocument', async () => { await runtime.clearPendingOperations!(); }); }
-    catch (error) { if (error instanceof RecoveryError && error.category === 'ambiguousState') return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'pending-operations-unresolved'], 'PENDING_OPERATIONS_UNRESOLVED', 'pending-operation reconciliation failed'); }
-    try { await primitiveJournal.read(); if (primitiveJournal.pendingUnknown().length > 0) return invalidRecovery(runtime, [...outstanding, 'pending-journal-records-remain'], 'PENDING_OPERATIONS_UNRESOLVED', 'pending-operation journal records were not durably reconciled'); }
-    catch (error) { if (error instanceof RecoveryError) return invalidRecovery(runtime, [...outstanding, 'pending-journal-corrupt'], error.code, error.message, true); return invalidRecovery(runtime, [...outstanding, 'pending-journal-corrupt'], 'PENDING_OPERATIONS_UNRESOLVED', 'pending-operation journal could not be re-read'); }
-  }
   try {
     const finalDocuments = [...await guard('readLayers', runtime.listDocuments)];
     if (finalDocuments.some((document) => document.owned || ledger.has(document.id))) return invalidRecovery(runtime, [...outstanding, 'pending-postcondition-failed'], 'CLEANUP_POSTCONDITION_FAILED', 'pending operations did not clear all owned documents');

@@ -46,8 +46,8 @@ export type WorkingCopyFileSystem = {
 
 export type QualifiedLinkOperation = {
   readLinks(path: string): Promise<readonly LinkedResource[]>;
-  relink?(jobOwnedParent: string, originalSource: string, jobOwnedSource: string): Promise<void>;
-  embed?(jobOwnedParent: string): Promise<void>;
+  relink?(jobOwnedParent: string, originalSource: string, jobOwnedSource: string): Promise<void | { acknowledged: true; parentPath: string; originalSource: string; jobOwnedSource: string }>;
+  embed?(jobOwnedParent: string): Promise<void | { acknowledged: true; parentPath: string }>;
   verifySelfContained?(path: string): Promise<boolean>;
   /** Test-only call trace is deliberately optional and never used for authorization. */
   calls?: Array<{ parent: string; original: string; copy: string }>;
@@ -265,6 +265,7 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
     for (const entry of nodes.values()) { byteSourceHashes.set(entry.originalPath, createHash('sha256').update(await fileSystem.readFile(entry.originalPath)).digest('hex')); await fileSystem.copy(entry.originalPath, entry.copyPath); }
     const copiedByCanonicalPath = new Map<string, WorkingCopyClosureEntry>();
     for (const entry of nodes.values()) copiedByCanonicalPath.set(await Promise.resolve(paths.canonical(entry.copyPath)).catch(() => entry.copyPath), entry);
+    const mutationProofs = new Map<string, boolean>();
     for (const entry of nodes.values()) {
       const nodeEdges = edges.get(entry.originalPath) ?? [];
       if (!nodeEdges.length) continue;
@@ -274,10 +275,13 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
         for (const edge of nodeEdges) {
           const target = nodes.get(edge.originalPath) ?? nodes.get(canonicalAliases.get(edge.originalPath) ?? '');
           if (!target) throw linkedError('linked dependency was not copied', { parentPath: entry.copyPath, path: edge.originalPath });
-          await options.operation.relink(entry.copyPath, edge.originalPath, target.copyPath);
+          const proof = await options.operation.relink(entry.copyPath, edge.originalPath, target.copyPath);
+          const exact = proof?.acknowledged === true && proof.parentPath === entry.copyPath && proof.originalSource === edge.originalPath && proof.jobOwnedSource === target.copyPath;
+          mutationProofs.set(entry.originalPath, (mutationProofs.get(entry.originalPath) ?? true) && exact);
         }
       } else if (options.operation.embed) {
-        await options.operation.embed(entry.copyPath);
+        const proof = await options.operation.embed(entry.copyPath);
+        mutationProofs.set(entry.originalPath, proof?.acknowledged === true && proof.parentPath === entry.copyPath);
       } else {
         throw linkedError('no qualified embed or relink operation is available', { parentPath: entry.copyPath, path: entry.originalPath });
       }
@@ -289,7 +293,7 @@ export async function createWorkingCopy(options: WorkingCopyOptions): Promise<Wo
       // this independent byte-level comparison.
       const rawSourceHash = byteSourceHashes.get(entry.originalPath)!;
       const copiedHash = createHash('sha256').update(await fileSystem.readFile(entry.copyPath)).digest('hex');
-      if (copiedHash !== rawSourceHash) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied linked resource differs from the isolated source', { path: entry.copyPath, expected: rawSourceHash, actual: copiedHash, declared: entry.sha256, phase: 'copied-resource' });
+      if (copiedHash !== rawSourceHash && mutationProofs.get(entry.originalPath) !== true) throw new WorkingCopyError('SOURCE_HASH_MISMATCH', 'copied parent changed without an acknowledged relink or embed bound to the exact copied closure', { path: entry.copyPath, expected: rawSourceHash, actual: copiedHash, declared: entry.sha256, phase: 'copied-resource' });
       const remaining = await options.operation.readLinks(entry.copyPath);
       for (const descriptor of remaining) {
         if (descriptor.sourceKind === 'embedded') continue;

@@ -1,6 +1,6 @@
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import sharp from 'sharp';
 import {
   CapabilityReportSchema,
@@ -154,12 +154,33 @@ const pathEscape = (path: string): boolean => path.includes('\0') || path.split(
 const within = (root: string, target: string): boolean => { const value = relative(root, target); return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value)); };
 async function existingCanonical(path: string): Promise<string> { return realpath(path); }
 async function rootContains(roots: readonly string[], path: string, allowMissingLeaf = false): Promise<boolean> {
-  const target = allowMissingLeaf ? await realpath(resolve(path, '..')) : await existingCanonical(path); const normalizedTarget = target.toLocaleLowerCase();
-  for (const root of roots) { const canonicalRoot = (await existingCanonical(root)).toLocaleLowerCase(); if (within(canonicalRoot, normalizedTarget)) return true; }
+  if (path.includes('\0')) return false;
+  for (const root of roots) {
+    let canonicalRoot: string;
+    try { canonicalRoot = await existingCanonical(root); } catch { continue; }
+    if ((await lstat(root)).isSymbolicLink()) continue;
+    if (allowMissingLeaf) {
+      let target: string;
+      try { target = resolve(await realpath(dirname(path)), basename(path)); } catch { continue; }
+      if (!within(canonicalRoot, target)) continue;
+      if (!within(resolve(root), resolve(path))) continue;
+      const parts = relative(resolve(root), resolve(path)).split(/[\\/]/).filter(Boolean); let current = resolve(root); let valid = true;
+      for (let index = 0; index < parts.length; index += 1) {
+        current = resolve(current, parts[index]!);
+        try { const stat = await lstat(current); if (stat.isSymbolicLink() || (index < parts.length - 1 && !stat.isDirectory()) || (index === parts.length - 1 && !stat.isDirectory())) valid = false; }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || index !== parts.length - 1) valid = false; }
+        if (!valid) break;
+      }
+      if (valid) return true;
+    } else {
+      try { if (within(canonicalRoot.toLocaleLowerCase(), (await existingCanonical(path)).toLocaleLowerCase())) return true; } catch { /* missing path */ }
+    }
+  }
   return false;
 }
 async function writeEvidence(root: string, relativePath: string, value: unknown): Promise<string> {
   if (pathEscape(relativePath) || relativePath.startsWith('/') || !within(resolve(root), resolve(root, relativePath))) throw new QualificationError('EVIDENCE_PATH_ESCAPE', `evidence path escapes trusted root: ${relativePath}`);
+  const rootStat = await lstat(root); if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence root changed before writing');
   const canonicalRoot = await realpath(root); const parts = relative(canonicalRoot, resolve(canonicalRoot, relativePath)).split(/[\\/]/).filter(Boolean); let current = canonicalRoot;
   for (let index = 0; index < parts.length; index += 1) {
     current = resolve(current, parts[index]!);
@@ -173,16 +194,38 @@ async function canonicalExistingInside(root: string, targetPath: string): Promis
   if (targetPath.includes('\0')) return false;
   let canonicalRoot: string;
   try { canonicalRoot = await realpath(root); } catch { return false; }
-  const target = isAbsolute(targetPath) ? resolve(targetPath) : resolve(canonicalRoot, targetPath);
+  const lexicalRoot = resolve(root);
+  const target = isAbsolute(targetPath) ? resolve(targetPath) : resolve(lexicalRoot, targetPath);
+  if (!within(lexicalRoot, target)) return false;
   let canonicalTarget: string; try { canonicalTarget = await realpath(target); } catch { return false; }
   if (!within(canonicalRoot, canonicalTarget)) return false;
-  const parts = relative(canonicalRoot, canonicalTarget).split(/[\\/]/).filter(Boolean); let current = canonicalRoot;
+  const parts = relative(lexicalRoot, target).split(/[\\/]/).filter(Boolean); let current = lexicalRoot;
   for (const part of parts) {
     current = resolve(current, part);
     let stat; try { stat = await lstat(current); } catch { return false; }
     if (stat.isSymbolicLink()) return false;
   }
-  try { return (await lstat(canonicalTarget)).isFile(); } catch { return false; }
+  try { return (await lstat(target)).isFile(); } catch { return false; }
+}
+async function ensureEvidenceRoot(path: string): Promise<string> {
+  if (!isAbsolute(path) || path.includes('\0')) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence directory must be an absolute path');
+  const parent = dirname(path);
+  const canonicalParent = await realpath(parent).catch(() => { throw new QualificationError('EVIDENCE_PATH_INVALID', 'evidence directory parent is unavailable'); });
+  try {
+    const rootStat = await lstat(path);
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new QualificationError('EVIDENCE_PATH_INVALID', 'evidence directory must be a real directory');
+  } catch (error) {
+    if (error instanceof QualificationError) throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    await mkdir(path);
+    const created = await lstat(path);
+    if (created.isSymbolicLink() || !created.isDirectory()) throw new QualificationError('EVIDENCE_PATH_INVALID', 'evidence directory was redirected during creation');
+  }
+  const canonical = await realpath(path);
+  if (!within(canonicalParent, canonical)) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence directory canonical path is not stable');
+  const parts = relative(canonicalParent, canonical).split(/[\\/]/).filter(Boolean); let current = canonicalParent;
+  for (const part of parts) { current = resolve(current, part); const entry = await lstat(current); if (entry.isSymbolicLink() || !entry.isDirectory()) throw new QualificationError('EVIDENCE_PATH_INVALID', 'evidence directory contains a symlink component'); }
+  return canonical;
 }
 async function verifiedFile(root: string, path: string, bytes: number, sha256: string): Promise<boolean> {
   if (!(await canonicalExistingInside(root, path)) || !Number.isInteger(bytes) || bytes <= 0 || !/^[a-f0-9]{64}$/.test(sha256)) return false;
@@ -249,7 +292,7 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       if (failure) throw failure;
     };
     try {
-      checkpoint(signal); const runtimeCapabilities = CapabilityReportSchema.parse(await adapter.capabilities()); const expected = request.inspection.capabilities;
+      checkpoint(signal); await ensureEvidenceRoot(request.evidenceDirectory); if (!await rootContains(options.approvedEvidenceRoots, request.evidenceDirectory, true)) throw new QualificationError('EVIDENCE_PATH_ESCAPE', 'evidence directory changed before qualification'); const runtimeCapabilities = CapabilityReportSchema.parse(await adapter.capabilities()); const expected = request.inspection.capabilities;
       if (!expected || stable(runtimeCapabilities) !== stable(expected)) throw new QualificationError('CAPABILITY_STALE', 'runtime capability evidence does not exactly match inspection', 'capability');
       if (request.proposal.status !== 'proposed' || request.proposal.output === null) throw new QualificationError('PROPOSAL_INCOMPLETE', 'complete proposed output is required');
       await mkdir(request.evidenceDirectory, { recursive: true }); const pre = await adapter.snapshot('pre'); evidencePaths.push(await writeEvidence(request.evidenceDirectory, 'snapshots/pre.json', pre));
@@ -279,12 +322,13 @@ export async function qualify(request: QualificationRequest, second: AbortSignal
       const result = QualificationResultSchema.parse({ status: 'qualified', candidate: candidate(request, fileRef(copy.path, preparedSha, `${request.inspection.template.rootId}:qualification`), selectors, runtimeCapabilities), checks, evidencePaths, errors: [] }); return result;
     } catch (cause) {
       let barrierFailure: unknown;
-      if (!(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN')) {
+      const ambiguous = !(cause instanceof QualificationError) || cause.category === 'ambiguousState' || cause.code.endsWith('_UNCERTAIN');
+      if (ambiguous) {
         if (!adapter.lock.markUnknownMutation) barrierFailure = new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'qualification barrier persistence is unavailable', 'ambiguousState');
         else try { await adapter.lock.markUnknownMutation(); } catch (error) { barrierFailure = new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'qualification barrier persistence failed', 'ambiguousState'); }
       }
       let cleanupFailure: unknown;
-      try { await clean(); } catch (error) { cleanupFailure = error; if (!adapter.lock.markUnknownMutation) barrierFailure ??= new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'cleanup failure cannot retain the recovery barrier', 'ambiguousState'); else try { await adapter.lock.markUnknownMutation(); } catch { barrierFailure ??= new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'cleanup failure barrier persistence failed', 'ambiguousState'); } }
+      if (!ambiguous) try { await clean(); } catch (error) { cleanupFailure = error; if (!adapter.lock.markUnknownMutation) barrierFailure ??= new QualificationError('RECOVERY_BARRIER_UNAVAILABLE', 'cleanup failure cannot retain the recovery barrier', 'ambiguousState'); else try { await adapter.lock.markUnknownMutation(); } catch { barrierFailure ??= new QualificationError('RECOVERY_BARRIER_PERSIST_FAILED', 'cleanup failure barrier persistence failed', 'ambiguousState'); } }
       const primary = barrierFailure ?? cleanupFailure ?? cause; const source = primary && typeof primary === 'object' ? primary as Record<string, unknown> : {}; const failure = primary instanceof QualificationError ? primary : new QualificationError(typeof source.code === 'string' ? source.code : 'CLEANUP_FAILED', primary instanceof Error ? primary.message : typeof source.message === 'string' ? source.message : String(primary), (typeof source.category === 'string' && ['validation', 'capability', 'transient', 'ambiguousState', 'review', 'cancelled'].includes(source.category) ? source.category : 'ambiguousState') as DomainError['category'], typeof source.retryable === 'boolean' ? source.retryable : false, Array.isArray(source.evidencePaths) ? source.evidencePaths.filter((path): path is string => typeof path === 'string') : []); const existing = []; for (const path of evidencePaths) if (await canonicalExistingInside(request.evidenceDirectory, path)) existing.push(path); return blocked([domainError(failure.code, failure.message, failure.category, existing, failure)], checks.map((check) => ({ ...check, passed: false })), existing);
     }
   };
