@@ -4,6 +4,7 @@ import { canonicalize } from '@ne-psd/contracts';
 import { buildToolMap, toolSchemaDigest, type SemanticOperation, type ToolDefinition, type ToolMapEntry } from './tool-map.js';
 import type { SessionLock } from './session-lock.js';
 import { OperationJournal, RecoveryError, operationTimeoutMs, runUncertainOperation } from './recovery.js';
+import type { CanonicalTraceWriter } from './trace.js';
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
 export type ToolTransport = { listTools(): Promise<{ tools: ToolDefinition[] }>; callTool(request: ToolCall, signal?: AbortSignal): Promise<unknown> };
@@ -52,6 +53,7 @@ export class McpClient {
     schemaDigest?: string;
     sessionLock?: Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation' | 'reconcile' | 'markTransportPending' | 'markTransportSettled' | 'journalPath' | 'journalIdentity' | 'journalMetadata'>>;
     journal?: OperationJournal;
+    canonicalTrace?: CanonicalTraceWriter;
     timeouts?: Partial<Record<string, number>>;
   }) { this.journal = options.journal ?? new OperationJournal(); }
   private readonly journals = new Map<string, OperationJournal>();
@@ -113,6 +115,7 @@ export class McpClient {
     const listed = this.schema!.tools.find((tool) => tool.name === toolName)!;
     if (!matchesSchema(args, listed.inputSchema)) throw new McpClientError('INVALID_TOOL_ARGUMENTS', `arguments do not match schema for ${toolName}`);
     const requestId = globalThis.crypto.randomUUID();
+    await this.options.canonicalTrace?.bytes('pre', toolName, Buffer.from(JSON.stringify({ requestId, toolName, arguments: args })), requestId);
     const trace: Trace = { requestId, toolName, arguments: redact(args), outcome: 'failed' };
     this.traces.push(trace);
     const journal = this.journalForCall();
@@ -146,6 +149,7 @@ export class McpClient {
     if (Array.isArray(result.content)) { const text = result.content[0]; if (!text || typeof text !== 'object' || typeof (text as Record<string, unknown>).text !== 'string') { trace.errorCode = 'INVALID_TOOL_RESPONSE'; throw new McpClientError('INVALID_TOOL_RESPONSE', 'tool content is invalid'); } try { value = JSON.parse((text as Record<string, unknown>).text as string); } catch { trace.errorCode = 'INVALID_TOOL_RESPONSE'; throw new McpClientError('INVALID_TOOL_RESPONSE', 'tool content is not JSON'); } }
     if (listed.outputSchema && !matchesSchema(value, listed.outputSchema)) { trace.errorCode = 'INVALID_TOOL_RESPONSE'; throw new McpClientError('INVALID_TOOL_RESPONSE', 'tool output does not match schema'); }
     trace.outcome = 'acknowledged';
+    await this.options.canonicalTrace?.bytes('post', toolName, Buffer.from(JSON.stringify(response)), requestId);
     return value;
   }
 

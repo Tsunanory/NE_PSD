@@ -1,6 +1,8 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { validateCanonicalTrace } from '../../packages/photoshop/src/backend.js';
+import { CanonicalTraceWriter } from '../../packages/photoshop/src/trace.js';
 import { describe, expect, it } from 'vitest';
 import {
   DocumentStack,
@@ -115,6 +117,24 @@ const stack = (adapter: FakeDocuments, evidencePath?: string, overrides: Partial
 });
 
 describe('owned Photoshop document stack', () => {
+  it('persists actual document bytes before and after the owned lifecycle', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'b15-document-trace-'));
+    const source = join(dir, 'template.psd');
+    const tracePath = join(dir, 'document-trace.jsonl');
+    await writeFile(source, 'original-working-copy');
+    const adapter = new FakeDocuments();
+    const originalClose = adapter.closeDiscard.bind(adapter);
+    adapter.closeDiscard = async (id) => { await writeFile(source, 'saved-working-copy'); await originalClose(id); };
+    const trace = stack(adapter, undefined, { workingRoot: dir, canonicalTrace: new CanonicalTraceWriter(dir, tracePath, { operationId: 'job:asset:1', requestId: 'document-lifecycle' }) });
+    await trace.openRoot(source);
+    await trace.complete();
+    await expect(validateCanonicalTrace(dir, 'document-trace.jsonl', 'job:asset:1')).resolves.toBeUndefined();
+    const records = (await readFile(tracePath, 'utf8')).trim().split('\n').map((line) => JSON.parse(line) as { phase: string; path?: string; detail?: { type: string; transition?: string; owned?: boolean } });
+    expect(await readFile(join(dir, records[0]!.path!), 'utf8')).toBe('original-working-copy');
+    expect(await readFile(join(dir, records.at(-1)!.path!), 'utf8')).toBe('saved-working-copy');
+    expect(records.some((record) => record.detail?.type === 'ownership-proof' && record.detail.owned === true)).toBe(true);
+    expect(records.some((record) => record.detail?.transition === 'complete')).toBe(true);
+  });
   it('saves deepest children inward and discards only owned documents', async () => {
     const adapter = new FakeDocuments(); const trace = stack(adapter);
     const root = await trace.openRoot(ROOT);

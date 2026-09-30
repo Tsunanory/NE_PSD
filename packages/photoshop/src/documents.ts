@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, normalize } from 'node:path';
 import type { DocumentContentType, DocumentState, DocumentTraceRecord, OperationKind } from './types.js';
+import { CanonicalTraceWriter } from './trace.js';
 
 export type DocumentSnapshot = DocumentState & {
   route: string | null;
@@ -45,6 +46,7 @@ export type DocumentStackOptions = {
   assertWritableTarget?: (path: string) => Promise<{ allowed: true } | { allowed: false; code: string }>;
   evidencePath?: string;
   traceSink?: DocumentTraceSink;
+  canonicalTrace?: CanonicalTraceWriter;
   now?: () => string;
 };
 
@@ -89,6 +91,7 @@ class Trace {
     const complete = { ...record, sequence: ++this.sequence, timestamp: (this.options.now ?? (() => new Date().toISOString()))() } as DocumentTraceRecord;
     if (complete.type === 'operation' && complete.operation) this.operationRecords.push(complete.operation);
     if (this.options.traceSink) await this.options.traceSink.append(complete);
+    if (this.options.canonicalTrace) await this.options.canonicalTrace.event(`${complete.type}:${complete.operation ?? complete.transition ?? complete.reason ?? 'observed'}`, complete.transition === 'unknown' ? 'unknown' : complete.transition === 'failedSafe' ? 'failed' : 'acknowledged', undefined, complete);
     if (this.options.evidencePath) {
       await mkdir(dirname(this.options.evidencePath), { recursive: true });
       await appendFile(this.options.evidencePath, `${JSON.stringify(complete)}\n`, 'utf8');
@@ -101,6 +104,7 @@ export class DocumentStack {
   state: DocumentStackState = 'open';
   private readonly ledger = new Map<string, DocumentHandle>();
   private readonly stack: DocumentHandle[] = [];
+  private rootPath?: string;
 
   constructor(private readonly adapter: DocumentAdapter, private readonly options: DocumentStackOptions) {
     if (!options.session.hostId || !options.session.processStartIdentity || !options.session.sessionId) throw new TypeError('session identity is required');
@@ -198,6 +202,8 @@ export class DocumentStack {
   }
   async openRoot(path: string): Promise<DocumentHandle> {
     if (!pathInRoot(path, this.options.workingRoot)) throw new DocumentStackError('ROOT_SOURCE_FORBIDDEN', 'working root must be inside the job-owned directory', { path, workingRoot: this.options.workingRoot });
+    if (this.options.canonicalTrace) await this.options.canonicalTrace.file('pre', 'document-content', path);
+    this.rootPath = path;
     const before = await this.snapshot();
     let result: DocumentOpenResult;
     try { result = await (async () => { let output!: DocumentOpenResult; await this.operation('openDocument', path, async () => { output = await this.adapter.openDocument(path); }); return output; })(); }
@@ -310,6 +316,7 @@ export class DocumentStack {
       if (root) await this.close(root);
       this.state = 'complete';
       await this.trace.record({ type: 'state-transition', transition: 'complete' });
+      if (this.options.canonicalTrace && this.rootPath) await this.options.canonicalTrace.file('post', 'document-content', this.rootPath);
     } catch (error) {
       if ((this.state as DocumentStackState) === 'uncertain' || (this.state as DocumentStackState) === 'paused') throw error;
       this.state = 'failed';

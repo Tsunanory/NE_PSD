@@ -1,4 +1,4 @@
-import { access, lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
@@ -18,7 +18,8 @@ import {
 import { exportVariants, type ExportAdapter, type ExportResult, type QualityEvidence, type Rgb } from './export.js';
 import { qualify as qualifyTemplate, type QualificationAdapter, type QualificationOptions } from './qualification.js';
 import type { SessionLock } from './session-lock.js';
-import type { FitMode, LayerSelector } from './types.js';
+import type { CanonicalTraceRecord, FitMode, LayerSelector } from './types.js';
+import { renderTraceOperationId } from './trace.js';
 
 export type BackendLock = Pick<SessionLock, 'runExclusive'> & Partial<Pick<SessionLock, 'markUnknownMutation' | 'runRecovery' | 'reconcile'>>;
 
@@ -170,35 +171,43 @@ async function writeSafeEvidence(root: string, path: string, value: unknown): Pr
   await writeFile(destination, JSON.stringify(value));
 }
 
-type TraceRecord = { schemaVersion: 1; phase: 'pre' | 'post'; path: string; bytes: number; sha256: string };
-
-function traceRecords(value: unknown, jsonl: boolean): TraceRecord[] {
-  const values = jsonl ? (Array.isArray(value) ? value : [value]) : (isRecord(value) && Array.isArray(value.records) ? value.records : []);
-  return values.filter(isRecord).map((record) => ({ schemaVersion: record.schemaVersion as 1, phase: record.phase as 'pre' | 'post', path: record.path as string, bytes: record.bytes as number, sha256: record.sha256 as string }));
-}
-
-async function validateTrace(root: string, path: string): Promise<void> {
+export async function validateCanonicalTrace(root: string, path: string, operationId: string): Promise<void> {
   let destination: string;
   try { destination = await safeBundlePath(root, path); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
   let fileStat;
   try { fileStat = await lstat(destination); } catch { throw new BackendError('TRACE_MISSING', `required trace evidence is missing: ${path}`); }
   if (!fileStat.isFile() || fileStat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `required trace evidence is not a regular file: ${path}`);
   const content = await readFile(destination, 'utf8');
-  const jsonl = path.toLowerCase().endsWith('.jsonl') || content.trim().split('\n').filter(Boolean).length > 1;
-  let decoded: unknown;
-  try { decoded = jsonl ? content.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : JSON.parse(content); }
-  catch { throw new BackendError('TRACE_INVALID', `required trace evidence is not valid JSON or JSONL: ${path}`); }
-  const records = traceRecords(decoded, jsonl);
-  if (records.length < 2 || !records.some((record) => record.phase === 'pre') || !records.some((record) => record.phase === 'post')) throw new BackendError('TRACE_INVALID', `required trace evidence lacks real pre/post records: ${path}`);
+  let records: CanonicalTraceRecord[];
+  try { records = content.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line) as CanonicalTraceRecord); }
+  catch { throw new BackendError('TRACE_INVALID', `required trace evidence is not canonical JSONL: ${path}`); }
+  if (records.length < 2 || records[0]?.phase !== 'pre' || records.at(-1)?.phase !== 'post') throw new BackendError('TRACE_INVALID', `required trace evidence lacks ordered pre/post records: ${path}`);
+  let previousSequence = 0;
+  const pending = new Map<string, string>();
+  let pairs = 0;
   for (const record of records) {
-    if (record.schemaVersion !== 1 || (record.phase !== 'pre' && record.phase !== 'post') || typeof record.path !== 'string' || !record.path || !Number.isInteger(record.bytes) || record.bytes <= 0 || !/^[a-f0-9]{64}$/.test(record.sha256)) throw new BackendError('TRACE_INVALID', `required trace record is malformed: ${path}`);
-    const referenced = await safeBundlePath(root, record.path);
-    const referencedStat = await stat(referenced).catch(() => undefined);
+    if (record.schemaVersion !== 1 || !['pre', 'post', 'event'].includes(record.phase) || typeof record.event !== 'string' || !record.event || !Number.isInteger(record.sequence) || record.sequence !== previousSequence + 1 || record.operationId !== operationId || typeof record.requestId !== 'string' || !record.requestId || record.outcome !== 'acknowledged') throw new BackendError('TRACE_INVALID', `required trace record is malformed or belongs to another operation: ${path}`);
+    previousSequence = record.sequence;
+    if (record.phase === 'event') continue;
+    if (record.phase === 'pre') {
+      if (pending.has(record.requestId)) throw new BackendError('TRACE_INVALID', `duplicate trace request: ${path}`);
+      pending.set(record.requestId, record.event);
+    } else {
+      if (pending.get(record.requestId) !== record.event) throw new BackendError('TRACE_INVALID', `trace pre/post identity or order differs: ${path}`);
+      pending.delete(record.requestId);
+      pairs += 1;
+    }
+    if (typeof record.path !== 'string' || !record.path || typeof record.bytes !== 'number' || !Number.isInteger(record.bytes) || record.bytes <= 0 || !/^[a-f0-9]{64}$/.test(record.sha256 ?? '')) throw new BackendError('TRACE_INVALID', `required hashed trace record is malformed: ${path}`);
+    let referenced: string;
+    try { referenced = await safeBundlePath(root, record.path); }
+    catch { throw new BackendError('TRACE_INVALID', `trace content path escapes the bundle: ${record.path}`); }
+    const referencedStat = await lstat(referenced).catch(() => undefined);
     if (!referencedStat?.isFile() || referencedStat.isSymbolicLink()) throw new BackendError('TRACE_INVALID', `trace content is missing or not a regular file: ${record.path}`);
     const bytes = await readFile(referenced);
     const actual = createHash('sha256').update(bytes).digest('hex');
     if (bytes.byteLength !== record.bytes || actual !== record.sha256) throw new BackendError('TRACE_INVALID', `trace content hash does not verify: ${record.path}`);
   }
+  if (pending.size || pairs === 0) throw new BackendError('TRACE_INVALID', `trace lacks complete pre/post pairs: ${path}`);
 }
 
 function errorFor(cause: unknown, fallback: string): BackendError {
@@ -394,7 +403,7 @@ export class PhotoshopBackend {
       for (const check of checks) {
         await writeSafeEvidence(canonicalRoot, check.evidencePath, { id: check.id, passed: check.passed });
       }
-      for (const path of [documentTracePath, toolTracePath]) await validateTrace(canonicalRoot, path);
+      for (const path of [documentTracePath, toolTracePath]) await validateCanonicalTrace(canonicalRoot, path, renderTraceOperationId(request));
       const evidence = RenderEvidenceSchema.parse({
         schemaVersion: 1,
         jobId: request.jobId,

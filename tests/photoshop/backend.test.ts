@@ -1,11 +1,11 @@
-import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { access, mkdtemp, readFile, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { RenderRequestSchema } from '@ne-psd/contracts';
-import { createPhotoshopBackend, type BackendAdapter, type LifecycleAcknowledgement, type RenderSession } from '../../packages/photoshop/src/backend.js';
+import { createPhotoshopBackend, validateCanonicalTrace, type BackendAdapter, type LifecycleAcknowledgement, type RenderSession } from '../../packages/photoshop/src/backend.js';
+import { CanonicalTraceWriter, renderTraceOperationId } from '../../packages/photoshop/src/trace.js';
 
 const capability = {
   backendId: 'alisaitteke' as const,
@@ -64,13 +64,14 @@ function adapter(events: string[], makeSession: () => RenderSession, markUnknown
     inspect: async () => { throw new Error('not used'); },
     createWorkingCopy: async (request) => {
       events.push('working-copy'); const created = makeSession();
-      const prePath = join(request.stagingDirectory, 'trace-input', 'pre.bin'); const postPath = join(request.stagingDirectory, 'trace-input', 'post.bin');
-      await mkdir(join(request.stagingDirectory, 'trace-input'), { recursive: true }); await writeFile(prePath, 'pre-trace-content'); await writeFile(postPath, 'post-trace-content');
-      const record = (phase: 'pre' | 'post', path: string, content: string) => ({ schemaVersion: 1, phase, path: path.slice(request.stagingDirectory.length + 1), bytes: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex') });
-      const trace = (kind: string) => JSON.stringify({ schemaVersion: 1, traceType: kind, records: [record('pre', prePath, 'pre-trace-content'), record('post', postPath, 'post-trace-content')] });
-      const documentTracePath = join(request.stagingDirectory, 'document-trace.json'); const toolTracePath = join(request.stagingDirectory, 'tool-trace.json');
-      try { await access(documentTracePath); } catch { await writeFile(documentTracePath, trace('document')); }
-      try { await access(toolTracePath); } catch { await writeFile(toolTracePath, trace('tool')); }
+      const documentTracePath = join(request.stagingDirectory, 'document-trace.jsonl'); const toolTracePath = join(request.stagingDirectory, 'tool-trace.jsonl');
+      for (const [kind, path] of [['document', documentTracePath], ['tool', toolTracePath]] as const) {
+        try { await access(path); } catch {
+          const trace = new CanonicalTraceWriter(request.stagingDirectory, path, { operationId: renderTraceOperationId(request), requestId: kind });
+          await trace.bytes('pre', kind, Buffer.from('pre-trace-content'));
+          await trace.bytes('post', kind, Buffer.from('post-trace-content'));
+        }
+      }
       return { ...created, documentTracePath, toolTracePath };
     },
   };
@@ -162,8 +163,34 @@ describe('B12 PhotoshopBackend transaction boundary', () => {
     const root = await mkdtemp(join(tmpdir(), 'b15-traces-'));
     const events: string[] = [];
     const original = adapter(events, () => session(events));
-    const invalid = { ...original, createWorkingCopy: async (request: Parameters<BackendAdapter['createWorkingCopy']>[0], signal: AbortSignal) => { const created = await original.createWorkingCopy(request, signal); await writeFile(join(request.stagingDirectory, 'document-trace.json'), JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); return created; } };
+    const invalid = { ...original, createWorkingCopy: async (request: Parameters<BackendAdapter['createWorkingCopy']>[0], signal: AbortSignal) => { const created = await original.createWorkingCopy(request, signal); await writeFile(join(request.stagingDirectory, 'document-trace.jsonl'), JSON.stringify({ preSha256: 'a'.repeat(64), postSha256: 'b'.repeat(64) })); return created; } };
     await expect(createPhotoshopBackend(invalid).render(await request(root), new AbortController().signal)).rejects.toMatchObject({ code: 'TRACE_INVALID' });
+  });
+
+  it('rejects missing, reordered, wrong-identity, changed-hash, changed-byte and escaped snapshot evidence', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b15-validator-'));
+    const tracePath = join(root, 'document-trace.jsonl');
+    const writer = new CanonicalTraceWriter(root, tracePath, { operationId: 'job:asset:1', requestId: 'document' });
+    await writer.bytes('pre', 'document-content', Buffer.from('before'));
+    await writer.bytes('post', 'document-content', Buffer.from('after'));
+    const original = await readFile(tracePath, 'utf8');
+    const records = original.trim().split('\n').map((line) => JSON.parse(line) as { path: string; sha256: string; operationId: string });
+    const writeRecords = async (value: typeof records) => writeFile(tracePath, `${value.map((record) => JSON.stringify(record)).join('\n')}\n`);
+    await expect(validateCanonicalTrace(root, 'missing.jsonl', 'job:asset:1')).rejects.toMatchObject({ code: 'TRACE_MISSING' });
+    await expect(validateCanonicalTrace(root, 'document-trace.jsonl', 'job:other:1')).rejects.toMatchObject({ code: 'TRACE_INVALID' });
+    await writeRecords([...records].reverse());
+    await expect(validateCanonicalTrace(root, 'document-trace.jsonl', 'job:asset:1')).rejects.toMatchObject({ code: 'TRACE_INVALID' });
+    records[1]!.sha256 = '0'.repeat(64);
+    await writeRecords(records);
+    await expect(validateCanonicalTrace(root, 'document-trace.jsonl', 'job:asset:1')).rejects.toMatchObject({ code: 'TRACE_INVALID' });
+    await writeFile(tracePath, original);
+    await writeFile(join(root, records[0]!.path), 'tampered');
+    await expect(validateCanonicalTrace(root, 'document-trace.jsonl', 'job:asset:1')).rejects.toMatchObject({ code: 'TRACE_INVALID' });
+    await unlink(join(root, records[0]!.path));
+    const outside = join(await mkdtemp(join(tmpdir(), 'b15-escape-')), 'outside.bin');
+    await writeFile(outside, 'before');
+    await symlink(outside, join(root, records[0]!.path));
+    await expect(validateCanonicalTrace(root, 'document-trace.jsonl', 'job:asset:1')).rejects.toMatchObject({ code: 'TRACE_INVALID' });
   });
 
   it('rejects an unsealed profile before opening a working copy', async () => {

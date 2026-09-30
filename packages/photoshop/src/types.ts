@@ -79,6 +79,22 @@ export type CallRecord = {
   evidencePath: string;
 };
 
+/** One trace contract for document and MCP producers; persisted as JSONL. */
+export type CanonicalTraceRecord = {
+  schemaVersion: 1;
+  phase: 'pre' | 'post' | 'event';
+  event: string;
+  sequence: number;
+  operationId: string;
+  requestId: string;
+  outcome: 'acknowledged' | 'failed' | 'unknown';
+  root?: 'source' | 'evidence' | 'work';
+  detail?: DocumentTraceRecord;
+  path?: string;
+  bytes?: number;
+  sha256?: string;
+};
+
 export type MutationRecord = {
   operation: OperationKind;
   documentId: string | null;

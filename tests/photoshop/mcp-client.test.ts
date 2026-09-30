@@ -1,7 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { buildPinnedLaunchParameters, McpClient, McpClientError, type ToolTransport } from '../../packages/photoshop/src/mcp-client.js';
 import { buildToolMap } from '../../packages/photoshop/src/tool-map.js';
+import { CanonicalTraceWriter } from '../../packages/photoshop/src/trace.js';
+import { validateCanonicalTrace } from '../../packages/photoshop/src/backend.js';
 
 const fixture = JSON.parse(await readFile(new URL('./fixtures/tool-schema.synthetic.json', import.meta.url), 'utf8')) as { tools: Array<Record<string, unknown>> };
 
@@ -15,6 +19,16 @@ function transport(response: unknown = { ok: true }): ToolTransport & { sentMuta
 }
 
 describe('MCP primitive qualification wrapper', () => {
+  it('persists the actual dispatched request and acknowledged response for backend validation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'b15-mcp-trace-'));
+    const path = join(root, 'tool-trace.jsonl');
+    const client = new McpClient({ transport: transport({ ok: true }), toolMap: buildToolMap(fixture.tools), canonicalTrace: new CanonicalTraceWriter(root, path, { operationId: 'job:asset:1', requestId: 'unused' }) });
+    await client.callRaw('fixture_scale', { percent: 100 });
+    await expect(validateCanonicalTrace(root, 'tool-trace.jsonl', 'job:asset:1')).resolves.toBeUndefined();
+    const records = (await readFile(path, 'utf8')).trim().split('\n').map((line) => JSON.parse(line) as { path: string });
+    expect(await readFile(join(root, records[0]!.path), 'utf8')).toContain('fixture_scale');
+    expect(await readFile(join(root, records[1]!.path), 'utf8')).toBe('{"ok":true}');
+  });
   it('pins a canonical tools/list schema digest', async () => {
     const client = new McpClient({ transport: transport(), toolMap: buildToolMap(fixture.tools) });
     expect(await client.listSchemaDigest()).toMatch(/^[0-9a-f]{64}$/);
