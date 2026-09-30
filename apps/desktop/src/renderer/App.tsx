@@ -76,13 +76,14 @@ export function App(): React.ReactElement {
       {snapshot ? <>
         <JobView state={snapshot.state} snapshot={snapshot} start={start} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} onOpenCommittedOutput={(assetId) => api.openCommittedOutput({ jobId, assetId })}
           handlers={{ pause: () => api.pauseJob({ jobId }), resume: () => api.resumeJob({ jobId }), cancel: () => api.cancelJob({ jobId }), retry: () => api.retryFailed({ jobId }) }}
-          onRetrySuccess={(id) => void connect(id)} />
+          onRetrySuccess={(id) => { store.previousJobs.push(snapshot); void connect(id); }} />
         {snapshot.assets.length > 50 && <nav aria-label="Страницы задания"><button type="button" disabled={start === 0} onClick={() => setStart(Math.max(0, start - 50))}>Предыдущие</button><span> {start + 1}–{Math.min(start + 50, snapshot.assets.length)} из {snapshot.assets.length} </span><button type="button" disabled={start + 50 >= snapshot.assets.length} onClick={() => setStart(start + 50)}>Следующие</button></nav>}
         {selected && <section aria-label="Детали изображения"><h3>{selected.assetId}</h3><p>Состояние: {selected.status}; попытка {selected.attempt}</p>
           {selected.error && <p role="alert">{selected.error.message}</p>}
           {detail?.available ? <section aria-label="История проверок"><h4>История проверок</h4>{detail.synthetic && <p>Синтетические записи режима разработки</p>}{detail.attempts.map((attempt) => <article key={attempt.attempt}>
             <h5>Попытка {attempt.attempt}</h5><p>Решение рецензента: {attempt.verdict ?? 'неизвестно'}; ID проверки: {attempt.reviewId ?? 'неизвестно'}</p>
             {attempt.variants.map((variant) => <p key={variant.variantId}>Вариант {variant.variantId}: {variant.verdict ?? 'неизвестно'}; доказательства: {variant.evidenceIds.join(', ') || 'неизвестно'}</p>)}
+            <p>Детерминированные проверки:</p>{attempt.checks.length ? attempt.checks.map((check) => <p key={check.requirementId}>{check.requirementId}: {check.result}; {check.reason}; доказательства: {check.evidenceIds.join(', ') || 'неизвестно'}</p>) : <p>неизвестно</p>}
             <p>Доказательства: {attempt.evidenceIds.join(', ') || 'неизвестно'}</p>
             {attempt.diagnostics.map((diagnostic) => <p key={diagnostic.evidenceId}>{diagnostic.code}: {diagnostic.summary}; ID {diagnostic.evidenceId}</p>)}
           </article>)}</section> : <p>История решений, детерминированные проверки и диагностические доказательства: неизвестно</p>}
@@ -92,6 +93,7 @@ export function App(): React.ReactElement {
         </section>}
       </> : <p role="status">Загрузка состояния задания</p>}
     </section>}
+    {store.previousJobs.length > 0 && <section aria-label="Предыдущие попытки задания"><h2>Предыдущие попытки</h2>{store.previousJobs.map((previous) => <button key={previous.jobId} type="button" onClick={() => void connect(previous.jobId)}>{previous.jobId}: {previous.state}</button>)}</section>}
     {recent.length > 0 && <section aria-label="Недавние задания"><h2>Недавние задания</h2>{recent.map((entry) => <button key={entry.jobId} type="button" onClick={() => void connect(entry.jobId)}>{entry.jobId}: {entry.snapshot.state}</button>)}</section>}
     <button type="button" onClick={() => void api.safeClose().catch((cause: unknown) => setError(errorMessage(cause)))}>Безопасно закрыть</button>
     {(error || store.error) && <p role="alert">{error || store.error}</p>}

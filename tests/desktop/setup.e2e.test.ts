@@ -15,7 +15,8 @@ test('native picks, model recheck and three bound previews gate setup start', as
   await desktopApp.evaluate(({ dialog }, choices) => {
     dialog.showOpenDialog = async (options) => ({ canceled: false, filePaths: [options.properties?.includes('openFile') ? choices.template : options.title === 'Выберите папку изображений' ? choices.assetsDir : choices.outputDir] });
   }, { template, assetsDir, outputDir });
-  await desktopPage.getByRole('button', { name: 'Выбрать PSD' }).click();
+  await desktopPage.getByRole('button', { name: 'Выбрать PSD' }).focus();
+  await desktopPage.keyboard.press('Enter');
   await expect(desktopPage.getByText('template.psd')).toBeVisible();
   await desktopPage.getByRole('button', { name: 'Выбрать входную папку' }).click();
   await expect(desktopPage.getByText('Принято: 1; отклонено: 0')).toBeVisible();
@@ -36,7 +37,8 @@ test('native picks, model recheck and three bound previews gate setup start', as
   await expect(desktopPage.getByRole('img', { name: 'Вариант 2' })).toBeVisible();
   await expect(desktopPage.getByRole('img', { name: 'Вариант 3' })).toBeVisible();
   await expect(desktopPage.getByRole('button', { name: 'Запустить задание' })).toBeDisabled();
-  await desktopPage.getByRole('button', { name: 'Подтвердить три изображения' }).click();
+  await desktopPage.getByRole('button', { name: 'Подтвердить три изображения' }).focus();
+  await desktopPage.keyboard.press('Enter');
   await expect(desktopPage.getByRole('button', { name: 'Запустить задание' })).toBeEnabled();
   await desktopPage.getByRole('button', { name: 'Запустить задание' }).click();
   await expect(desktopPage.locator('[data-job-id]')).toBeVisible();
