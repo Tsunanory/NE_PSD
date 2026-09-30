@@ -8,7 +8,7 @@ import { composeServices, type DesktopServices } from './services.js';
 
 let window: BrowserWindow | null = null;
 export function createMainWindow(mode: 'development' | 'production' = 'production'): BrowserWindow {
-  const created = new BrowserWindow({ webPreferences: { ...secureWebPreferences, preload: resolve(dirname(fileURLToPath(import.meta.url)), '../preload/index.js') } });
+  const created = new BrowserWindow({ webPreferences: { ...secureWebPreferences, preload: resolve(dirname(fileURLToPath(import.meta.url)), '../preload/index.cjs') } });
   installWindowPolicy(created.webContents, mode);
   if (mode === 'development' && process.env.NE_PSD_DEV_FILE !== '1') void created.loadURL('http://localhost:5173/');
   else void created.loadFile(resolve(dirname(fileURLToPath(import.meta.url)), '../renderer/index.html'));
