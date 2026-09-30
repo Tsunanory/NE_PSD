@@ -78,4 +78,15 @@ describe('durable desktop job session', () => {
     vi.mocked(jobs.pause).mockRejectedValue(new Error('persistence failure'));
     await expect(session.safeClose()).rejects.toThrow('persistence failure');
   });
+  it('refuses to close failed or ambiguous Photoshop state without trusted quiescence evidence', async () => {
+    for (const state of ['failed', 'blocked'] as const) {
+      const { root, jobs } = fixture();
+      vi.mocked(jobs.snapshot).mockImplementation(async (id) => snapshot(id, state));
+      const session = new JobSessionController({ jobs, userDataDirectory: root, developmentFake: true });
+      await session.recordStarted(`${state}-job`);
+      await expect(session.safeClose()).rejects.toThrow('recovery must be resolved');
+      expect(jobs.pause).not.toHaveBeenCalled();
+      expect((await session.recentJobs())[0]?.snapshot.state).toBe(state);
+    }
+  });
 });

@@ -16,6 +16,7 @@ export function qualifyInspection(inspection: InspectionReport, proposal: Config
   for (const candidate of inspection.candidates) { const key = JSON.stringify(candidate.selector); if (duplicateSelectors.has(key)) return block('structurally ambiguous selector'); duplicateSelectors.add(key); }
   const checked = validateConfigurationProposal(proposal, inspection); if (!checked.success) return block(checked.error.message);
   if (!inspection.capabilities.supportedFitModes.includes(proposal.fitMode)) return block(`fit mode ${proposal.fitMode} is unsupported: Этот способ размещения не проверен для выбранного шаблона`);
+  if (inspection.unresolvedLinks.length > 0) return block('linked dependencies are unresolved');
   if (inspection.documents.some((document) => document.sourceKind === 'linked') && !inspection.evidencePaths.some((path) => path.includes('linked-isolation'))) return block('linked dependency isolation evidence is missing');
   const byId = new Map(inspection.candidates.map((candidate) => [candidate.candidateId, candidate]));
   const target = proposal.targets[0]!; const targetCandidate = byId.get(target.targetCandidateId); const reference = byId.get(target.referenceCandidateId); if (!targetCandidate || !reference) return block('target or reference selector is missing');
