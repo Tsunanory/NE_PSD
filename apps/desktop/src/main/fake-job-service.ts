@@ -1,5 +1,5 @@
 import { FakeJobService as ContractFakeJobService, fixtureRoot, loadFixture } from '@ne-psd/contracts/testing';
-import { JobSpecSchema, VisualReviewRequestSchema, type JobEvent, type JobSnapshot, type JobSpec, type VisualReviewRequest } from '@ne-psd/contracts';
+import { JobEventSchema, JobSnapshotSchema, JobSpecSchema, VisualReviewRequestSchema, type JobEvent, type JobSnapshot, type JobSpec, type VisualReviewRequest } from '@ne-psd/contracts';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -54,21 +54,64 @@ export function createFakeCorpusSpec(count: number, jobId = `fake-corpus-${count
 
 export class FakeJobService extends ContractFakeJobService {
   private readonly activeSubscriptions = new Map<string, number>();
+  private readonly fixtureSnapshots = new Map<string, JobSnapshot>();
+  private readonly fixtureEvents = new Map<string, JobEvent[]>();
+  private readonly fixtureListeners = new Map<string, Set<(event: JobEvent) => void>>();
+
+  private publishFixture(jobId: string, value: JobSnapshot): void {
+    const snapshot = freezeDeep(JobSnapshotSchema.parse(value));
+    const sequence = (this.events(jobId).at(-1)?.sequence ?? 0) + 1;
+    const event = freezeDeep(JobEventSchema.parse({ schemaVersion: 1, jobId, sequence,
+      timestamp: '2026-09-30T00:00:00.000Z', kind: 'snapshot', snapshot }));
+    this.fixtureSnapshots.set(jobId, snapshot);
+    this.fixtureEvents.set(jobId, [...this.fixtureEvents.get(jobId) ?? [], event]);
+    for (const listener of this.fixtureListeners.get(jobId) ?? []) listener(event);
+  }
+
+  /** Explicit development-only failure driver; never exposed by the production IPC. */
+  async failFakeJob(jobId: string): Promise<void> {
+    const current = await this.snapshot(jobId);
+    if (current.state !== 'running' || !current.assets[0]) throw new Error('fake job must be running');
+    const failedAsset = current.assets[0];
+    this.publishFixture(jobId, { ...current, state: 'failed', failed: current.failed + 1,
+      assets: current.assets.map((asset, index) => index === 0 ? { ...failedAsset, status: 'failed',
+        error: { code: 'FAKE_TRANSIENT', category: 'transient', message: 'synthetic transient failure', retryable: true,
+          evidencePaths: ['testOnly/jobs/transient.json'] } } : asset) });
+  }
+
+  override async retryFailed(jobId: string): Promise<{ jobId: string }> {
+    const failed = this.fixtureSnapshots.get(jobId);
+    if (!failed || failed.state !== 'failed') throw new Error('fake job has no retryable failure');
+    if (failed.assets.some((asset) => asset.status === 'failed' && asset.attempt >= 2)) throw new Error('fake attempt limit reached');
+    const successor = await super.retryFailed(jobId);
+    this.publishFixture(successor.jobId, { ...failed, jobId: successor.jobId, state: 'running', failed: 0,
+      assets: failed.assets.map((asset) => asset.status === 'failed'
+        ? { ...asset, status: 'queued', attempt: (asset.attempt + 1) as 1 | 2, error: null } : asset) });
+    return successor;
+  }
 
   override subscribe(jobId: string, listener: (event: JobEvent) => void): () => void {
     const unsubscribe = super.subscribe(jobId, listener);
+    const fixtureListeners = this.fixtureListeners.get(jobId) ?? new Set<(event: JobEvent) => void>();
+    fixtureListeners.add(listener);
+    this.fixtureListeners.set(jobId, fixtureListeners);
     this.activeSubscriptions.set(jobId, (this.activeSubscriptions.get(jobId) ?? 0) + 1);
     let closed = false;
     return () => {
       if (closed) return;
       closed = true;
       unsubscribe();
+      fixtureListeners.delete(listener);
       this.activeSubscriptions.set(jobId, (this.activeSubscriptions.get(jobId) ?? 1) - 1);
     };
   }
 
   override async snapshot(jobId: string): Promise<Readonly<JobSnapshot>> {
-    return freezeDeep(await super.snapshot(jobId));
+    return this.fixtureSnapshots.get(jobId) ?? freezeDeep(await super.snapshot(jobId));
+  }
+
+  override events(jobId: string): readonly JobEvent[] {
+    return [...super.events(jobId), ...this.fixtureEvents.get(jobId) ?? []];
   }
 
   override async visualReview(jobId: string, assetId: string): Promise<VisualReviewRequest | null> {
