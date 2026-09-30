@@ -1,8 +1,12 @@
 import { test, expect } from './electron-fixture.js';
 
-test('fake development model setup shows requested identity and blocked state', async ({ desktopPage }) => {
+test('selected local model shows qualification evidence after recheck', async ({ desktopPage }) => {
+  await desktopPage.getByRole('combobox', { name: 'Планировщик' }).selectOption({ index: 1 });
+  await desktopPage.getByRole('combobox', { name: 'Рецензент' }).selectOption({ index: 1 });
   await expect(desktopPage.getByText('Запрошенная модель: Qwen3.8-27B')).toBeVisible();
-  await expect(desktopPage.getByText('Модель не проверяет изображение визуально')).toBeVisible();
-  await expect(desktopPage.getByText('Рецензент изображений не выбран. Автоматическая проверка изображений недоступна.')).toBeVisible();
-  await expect(desktopPage.getByText('Метаданные, KV-кэш, runtime и память Photoshop не включены.')).toBeVisible();
+  await desktopPage.getByRole('button', { name: 'Выбрать роли моделей' }).click();
+  await desktopPage.getByRole('button', { name: 'Проверить планировщик' }).click();
+  await desktopPage.getByRole('button', { name: 'Проверить рецензента' }).click();
+  await expect(desktopPage.getByRole('region', { name: 'Настройка модели' }).getByText('Квалификация')).toHaveCount(2);
+  await expect(desktopPage.getByText('Автоматическая проверка изображений недоступна')).toBeVisible();
 });

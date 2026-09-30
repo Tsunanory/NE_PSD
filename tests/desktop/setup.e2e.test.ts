@@ -1,7 +1,43 @@
 import { test, expect } from './electron-fixture.js';
+import { copyFile, mkdir } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
 
-test('fake development setup labels unqualified template', async ({ desktopPage }) => {
-  await expect(desktopPage.getByRole('heading', { name: 'Настройка шаблона' })).toBeVisible();
-  await expect(desktopPage.getByText('Синтетические данные; шаблон не квалифицирован')).toBeVisible();
-  for (const id of ['1', '2', '3']) await expect(desktopPage.getByRole('figure', { name: `Синтетический вариант ${id}` })).toBeVisible();
+test('native picks, model recheck and three bound previews gate setup start', async ({ desktopApp, desktopPage }, testInfo) => {
+  test.setTimeout(60_000);
+  const root = testInfo.outputPath('setup');
+  const templateDir = join(root, 'template');
+  const assetsDir = join(root, 'assets');
+  const outputDir = join(root, 'output');
+  await Promise.all([mkdir(templateDir, { recursive: true }), mkdir(assetsDir, { recursive: true }), mkdir(outputDir, { recursive: true })]);
+  const template = join(templateDir, 'template.psd');
+  await copyFile(resolve('tests/fixtures/contracts/assets/template.psd'), template);
+  await copyFile(resolve('tests/fixtures/contracts/assets/source.png'), join(assetsDir, 'source.png'));
+  await desktopApp.evaluate(({ dialog }, choices) => {
+    dialog.showOpenDialog = async (options) => ({ canceled: false, filePaths: [options.properties?.includes('openFile') ? choices.template : options.title === 'Выберите папку изображений' ? choices.assetsDir : choices.outputDir] });
+  }, { template, assetsDir, outputDir });
+  await desktopPage.getByRole('button', { name: 'Выбрать PSD' }).click();
+  await expect(desktopPage.getByText('template.psd')).toBeVisible();
+  await desktopPage.getByRole('button', { name: 'Выбрать входную папку' }).click();
+  await expect(desktopPage.getByText('Принято: 1; отклонено: 0')).toBeVisible();
+  await desktopPage.getByRole('button', { name: 'Выбрать папку результатов' }).click();
+  await desktopPage.getByRole('combobox', { name: 'Планировщик' }).selectOption({ index: 1 });
+  await desktopPage.getByRole('combobox', { name: 'Рецензент' }).selectOption({ index: 1 });
+  await desktopPage.getByRole('button', { name: 'Выбрать роли моделей' }).click();
+  await desktopPage.getByRole('button', { name: 'Проверить планировщик' }).click();
+  await desktopPage.getByRole('button', { name: 'Проверить рецензента' }).click();
+  await desktopPage.getByRole('button', { name: 'Инспектировать PSD' }).click();
+  await expect(desktopPage.getByText('Инспекция: inspection-live-1', { exact: false })).toBeVisible();
+  await desktopPage.getByRole('button', { name: 'Предложить конфигурацию' }).click();
+  await desktopPage.getByRole('button', { name: 'Подтвердить цель, образец и варианты' }).click();
+  await desktopPage.getByRole('button', { name: 'Подтвердить способ размещения' }).click();
+  await desktopPage.getByRole('button', { name: 'Подтвердить параметры результата' }).click();
+  await desktopPage.getByRole('button', { name: 'Квалифицировать шаблон' }).click();
+  await expect(desktopPage.getByRole('img', { name: 'Вариант 1' })).toBeVisible();
+  await expect(desktopPage.getByRole('img', { name: 'Вариант 2' })).toBeVisible();
+  await expect(desktopPage.getByRole('img', { name: 'Вариант 3' })).toBeVisible();
+  await expect(desktopPage.getByRole('button', { name: 'Запустить задание' })).toBeDisabled();
+  await desktopPage.getByRole('button', { name: 'Подтвердить три изображения' }).click();
+  await expect(desktopPage.getByRole('button', { name: 'Запустить задание' })).toBeEnabled();
+  await desktopPage.getByRole('button', { name: 'Запустить задание' }).click();
+  await expect(desktopPage.locator('[data-job-id]')).toBeVisible();
 });
