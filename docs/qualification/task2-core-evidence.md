@@ -1,17 +1,17 @@
-# Task 2 core evidence
+# Task 2 core evidence — A-T2a, 2026-09-30
 
-2026-09-22, branch `build/core`, commit pending.
+Branch `build/core`; implementation commit `3743cb29e269022db379dc47c38352745989b2f2`. This closes the local mutation-admission and ambiguity-lifecycle packet only. Task 2 as a whole remains open.
 
-The injected Task 2 boundary uses the B-owned Photoshop lease interface; core creates no installation lock. Lease diagnostics require host, PID, process start and job identity. A process-local mutation serializer rejects overlapping backend mutations. Timeout or ambiguous mutation retains the lease and invokes read-only recovery; unsafe recovery blocks the asset. A safe recovery is the only path that releases the lease after ambiguity.
+Runtime: exact Node `22.23.2`, npm `10.9.8`, macOS arm64, native SQLite ABI `127`; qualified path and checks are in `docs/qualification/toolchain-2026-09-30.md`. Each npm command below used `PATH=/Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/.toolchains/node-v22.23.2-darwin-arm64/bin:$PATH` from the core worktree.
 
-Attempt staging is created below the bound output root at `.ne-psd-staging/<jobId>/<assetId>/<attempt>`. Source handoff uses `readValidatedSource`; copied bytes are rehashed and size-checked. Cleanup only removes recorded paths under the workspace root.
+## RED → GREEN
 
-Focused fake verification:
+- RED before implementation: `npm run test:core -- tests/core/runner.test.ts --reporter=dot` exited 1, **9 failed / 3 passed**. The blocked/busy cases found workspaces created before admission; pending recovery and release-wait cases allowed the second runner to enter; release-proof cases failed to retain ambiguity; acquire failure left an abort listener. Exact output: `/private/tmp/ne-psd-a-t2a-red.log` (ephemeral local log).
+- Additional RED: `npm run test:core -- tests/core/recovery.test.ts` rejected a truthy malformed recovery claim, then a missing evidence-path list; `npm run test:core -- tests/core/runner.test.ts -t 'release proof truthy' --reporter=dot` rejected truthy non-boolean release proof.
+- GREEN: `npm run build --workspace=@ne-psd/core` passed. `npm run test:core -- tests/core/runner.test.ts tests/core/backend-serialization.test.ts tests/core/recovery.test.ts tests/core/cancellation.test.ts` passed **4 files / 23 tests**. `npm run test:core` passed **10 files / 60 tests**. `npm run check --workspace=@ne-psd/core` and `git diff --check` passed.
 
-- `npm run test:core -- tests/core/runner.test.ts tests/core/backend-serialization.test.ts tests/core/recovery.test.ts tests/core/cancellation.test.ts`: 4 files, 8 tests passed.
-- Full A-owned core suite including Task 2 files: 9 files, 44 tests passed.
-- Core build, typecheck and `git diff --check`: passed.
+## Result and boundary
 
-External gates remain open: live Photoshop, Windows reparse-point behavior, real PSD backend, model qualification and visual review. No mock result is a live qualification claim.
+The shared serializer now admits the entire render attempt before workspace creation, lease access, database transition, or backend call. Two runners using the same lease reject blocked or busy admission without creating a new attempt or marking the queued asset failed. Ambiguity is latched before awaiting read-only recovery and stays latched through release proof and release completion. Missing, false, malformed, or throwing proof and failed release keep the asset blocked and the lease retained. Only literal `safe: true` recovery with a valid evidence-path list, literal `true` release proof, and completed release clear the latch. A late render response cannot clear it. Acquire failure installs no cancellation timer or parent abort listener. Only a transport failure with proven release receives one automatic retry; ambiguous and unproven failures do not.
 
-Correction retry: ambiguity is now latched in a lease-shared serializer until explicit safe recovery clears it; late settlement alone cannot start another mutation. Runner source handoff copies and verifies `PreflightFile` bytes into the owned staging directory. Workspace components and symlink ancestors are rejected, cleanup is confined to recorded paths, cancellation timers/listeners are disposed, and subscription delivery advances by event sequence rather than repeating the last event.
+This uses the existing B-owned lease interface and creates no second OS lock. It does not establish B production wiring or the per-asset owned-source contract. `RenderRunnerOptions.source` remains optional and runner-wide; `RenderRequest.asset.source` still identifies the original FileRef, not the copied working source. A-T2b must reconcile B's `SessionLock` ownership and an explicit owned-source/dependency handoff. A-T2c still owns disk preflight, linked-dependency/scratch isolation, broader crash/cancel/pause matrix, and durable integration. The local fake tests do not prove Photoshop, Windows, or model compatibility.
