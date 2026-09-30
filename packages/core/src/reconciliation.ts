@@ -61,6 +61,7 @@ async function collectFiles(root: string, prefix = ''): Promise<string[]> {
 
 export async function quarantineCommittedDirectory(intent: PublicationIntent): Promise<string> {
   await assertBoundDestination(intent);
+  if (await inspectCommittedDirectory(intent) !== 'corrupt') throw new Error('cannot quarantine a valid or missing publication');
   const info = await lstat(intent.destinationPath);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('committed destination is not an owned directory');
   const quarantineRoot = join(intent.outputRootPath, 'quarantine');

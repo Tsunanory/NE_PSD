@@ -61,4 +61,11 @@ describe('publication reconciliation', () => {
     await expect(quarantineCommittedDirectory({ ...f.intent, outputRootIdentity: '0'.repeat(64) })).rejects.toThrow();
     expect(await inspectCommittedDirectory(f.intent)).toBe('valid');
   });
+
+  it('refuses to quarantine a valid committed publication', async () => {
+    const f = await fixture();
+    await publishStagedDirectory(f.intent, f.manifest, f.review);
+    await expect(quarantineCommittedDirectory(f.intent)).rejects.toThrow(/valid/i);
+    expect(await inspectCommittedDirectory(f.intent)).toBe('valid');
+  });
 });
