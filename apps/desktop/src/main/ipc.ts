@@ -67,7 +67,7 @@ export function registerIpc(
   register('job.snapshot', ({ jobId }: { jobId: string }) => services.jobs.snapshot(jobId));
   register('job.retryFailed', async ({ jobId }: { jobId: string }) => {
     const successor = await services.jobs.retryFailed(jobId);
-    await sessions?.recordStarted(successor.jobId);
+    await sessions?.recordRetry(jobId, successor.jobId);
     return successor;
   });
   register('job.visualReview', ({ jobId, assetId }: { jobId: string; assetId: string }) => services.jobs.visualReview(jobId, assetId));
