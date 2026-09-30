@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -26,9 +26,9 @@ function reviewFixture() {
 }
 
 describe('desktop evidence boundary', () => {
-  it('loads only three digest-bound image inputs and contact sheet', () => {
+  it('loads only three digest-bound image inputs and contact sheet', async () => {
     const { root, request, manifest } = reviewFixture();
-    const images = readReviewImages(root, request, manifest);
+    const images = await readReviewImages(root, request, manifest);
     expect(images.variants.map((item) => item.variantId)).toEqual(['1', '2', '3']);
     expect(images.variants.every((item) => item.dataUrl.startsWith('data:image/png;base64,'))).toBe(true);
     expect(images.contactSheet.dataUrl).toContain('data:image/png;base64,');
@@ -37,16 +37,16 @@ describe('desktop evidence boundary', () => {
     expect(markup).toContain('Выбор оператора обязателен');
     expect(markup).not.toContain('aria-pressed="true"');
   });
-  it('rejects stale digest, unlisted path, symlink and executable bytes', () => {
+  it('rejects stale digest, unlisted path, symlink and executable bytes', async () => {
     const { root, request, manifest } = reviewFixture();
-    expect(() => readReviewImages(root, { ...request, artifacts: [{ ...request.artifacts[0], sha256: 'f'.repeat(64) }, request.artifacts[1], request.artifacts[2]] }, manifest)).toThrow();
-    expect(() => readReviewImages(root, { ...request, contactSheet: { ...request.contactSheet, relativePath: '../other.png' } }, manifest)).toThrow();
+    await expect(readReviewImages(root, { ...request, artifacts: [{ ...request.artifacts[0], sha256: 'f'.repeat(64) }, request.artifacts[1], request.artifacts[2]] }, manifest)).rejects.toThrow();
+    await expect(readReviewImages(root, { ...request, contactSheet: { ...request.contactSheet, relativePath: '../other.png' } }, manifest)).rejects.toThrow();
     writeFileSync(join(root, 'images', 'one.png'), '<script>alert(1)</script>');
-    expect(() => readReviewImages(root, request, manifest)).toThrow();
+    await expect(readReviewImages(root, request, manifest)).rejects.toThrow();
     writeFileSync(join(root, 'images', 'one.png'), png);
     symlinkSync(join(root, 'images', 'one.png'), join(root, 'images', 'alias.png'));
     const linked = { ...request, artifacts: [{ ...request.artifacts[0], path: 'images/alias.png' }, request.artifacts[1], request.artifacts[2]] };
-    expect(() => readReviewImages(root, linked, manifest)).toThrow();
+    await expect(readReviewImages(root, linked, manifest)).rejects.toThrow();
   });
   it('keeps the legacy manifest read constrained and never opens staging', () => {
     const { root } = reviewFixture();
@@ -58,12 +58,29 @@ describe('desktop evidence boundary', () => {
     expect(openCommittedOutput(root, 'committed')).toContain('committed');
     expect(redactLog('failed /Users/test/secret token=abc123')).toBe('failed [path] token=[redacted]');
   });
-  it('resolves only a matching committed output record', () => {
+  it('resolves only a matching committed output record', async () => {
     const { root } = reviewFixture();
     const record = { jobId: 'job-1', relativePath: 'images/one.png', sha256: hash, bytes: png.length, state: 'complete' as const };
-    expect(resolveCommittedOutput(root, 'job-1', record)).toContain('images/one.png');
-    expect(() => resolveCommittedOutput(root, 'job-2', record)).toThrow();
-    expect(() => resolveCommittedOutput(root, 'job-1', { ...record, sha256: 'f'.repeat(64) })).toThrow();
-    expect(() => resolveCommittedOutput(root, 'job-1', { ...record, relativePath: 'staging/one.png' })).toThrow();
+    await expect(resolveCommittedOutput(root, 'job-1', record)).resolves.toContain('images/one.png');
+    await expect(resolveCommittedOutput(root, 'job-2', record)).rejects.toThrow();
+    await expect(resolveCommittedOutput(root, 'job-1', { ...record, sha256: 'f'.repeat(64) })).rejects.toThrow();
+    await expect(resolveCommittedOutput(root, 'job-1', { ...record, relativePath: 'staging/one.png' })).rejects.toThrow();
+  });
+  it('rejects oversized input before reading and yields during a large verified read', async () => {
+    const { root } = reviewFixture();
+    const path = join(root, 'images', 'large.png');
+    writeFileSync(path, png);
+    truncateSync(path, 50 * 1024 * 1024 + 1);
+    const oversized = { jobId: 'job-1', relativePath: 'images/large.png', sha256: hash, bytes: 50 * 1024 * 1024 + 1, state: 'complete' as const };
+    await expect(resolveCommittedOutput(root, 'job-1', oversized)).rejects.toThrow('size mismatch');
+    const large = Buffer.alloc(4 * 1024 * 1024);
+    png.copy(large);
+    writeFileSync(path, large);
+    const record = { ...oversized, sha256: createHash('sha256').update(large).digest('hex'), bytes: large.length };
+    let eventLoopAdvanced = false;
+    const read = resolveCommittedOutput(root, 'job-1', record);
+    setImmediate(() => { eventLoopAdvanced = true; });
+    await expect(read).resolves.toContain('images/large.png');
+    expect(eventLoopAdvanced).toBe(true);
   });
 });
