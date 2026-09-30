@@ -1,2 +1,7 @@
-import { test, expect } from 'playwright/test'; import { _electron as electron } from 'playwright'; import { resolve } from 'node:path';
-test('job progress shell keeps review and safe-control labels', async () => { const app = await electron.launch({ args: [resolve('apps/desktop/dist/main/index.js')], env: { ...process.env, NODE_ENV: 'production' } }); const page = await app.firstWindow(); await expect(page.getByRole('heading', { name: 'NE PSD' })).toBeVisible(); await app.close(); });
+import { test, expect } from './electron-fixture.js';
+
+test('fake development job shell blocks actions without an active job', async ({ desktopPage }) => {
+  await expect(desktopPage.getByRole('heading', { name: 'Ход обработки' })).toBeVisible();
+  await expect(desktopPage.getByRole('button', { name: 'Приостановить' })).toBeDisabled();
+  await expect(desktopPage.getByRole('button', { name: 'Отправить решение' })).toBeDisabled();
+});

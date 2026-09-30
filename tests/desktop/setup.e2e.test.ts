@@ -1,2 +1,7 @@
-import { test, expect } from 'playwright/test'; import { _electron as electron } from 'playwright'; import { resolve } from 'node:path';
-test('setup shell exposes synthetic qualification honestly', async () => { const app = await electron.launch({ args: [resolve('apps/desktop/dist/main/index.js')], env: { ...process.env, NODE_ENV: 'production' } }); const page = await app.firstWindow(); await expect(page.getByRole('heading', { name: 'Настройка шаблона' })).toBeVisible(); await expect(page.getByText('Синтетические данные; шаблон не квалифицирован')).toBeVisible(); await expect(page.getByText('Вариант 1')).toBeVisible(); await expect(page.getByText('Вариант 2')).toBeVisible(); await expect(page.getByText('Вариант 3')).toBeVisible(); await app.close(); });
+import { test, expect } from './electron-fixture.js';
+
+test('fake development setup labels unqualified template', async ({ desktopPage }) => {
+  await expect(desktopPage.getByRole('heading', { name: 'Настройка шаблона' })).toBeVisible();
+  await expect(desktopPage.getByText('Синтетические данные; шаблон не квалифицирован')).toBeVisible();
+  for (const id of ['1', '2', '3']) await expect(desktopPage.getByRole('figure', { name: `Синтетический вариант ${id}` })).toBeVisible();
+});
