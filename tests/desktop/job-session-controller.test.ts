@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { EvidenceBundleManifest, JobService, JobSnapshot, VisualReviewRequest } from '@ne-psd/contracts';
 import { JobSessionController, type JobEvidenceAdapter } from '../../apps/desktop/src/main/job-session-controller.js';
+import { FakeJobService, createFakeJobEvidenceAdapter } from '../../apps/desktop/src/main/fake-job-service.js';
+import { loadFixture } from '@ne-psd/contracts/testing';
+import type { JobSpec } from '@ne-psd/contracts';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pWQAAAAASUVORK5CYII=', 'base64');
 const digest = createHash('sha256').update(png).digest('hex');
@@ -25,6 +28,19 @@ function fixture() {
 }
 
 describe('durable desktop job session', () => {
+  it('binds explicit synthetic fake review to real fixture bytes and all three variants', async () => {
+    const fake = new FakeJobService();
+    const spec = loadFixture<JobSpec>('job.interactive.json');
+    const { jobId } = await fake.start(spec);
+    const assetId = spec.assets[0]!.assetId;
+    const session = new JobSessionController({ jobs: fake, userDataDirectory: mkdtempSync(join(tmpdir(), 'ne-psd-fake-session-')), developmentFake: true, evidenceAdapter: createFakeJobEvidenceAdapter() });
+    const images = await session.readReviewImages(jobId, assetId);
+    expect(images.synthetic).toBe(true);
+    expect(images.variants.map((item) => item.variantId)).toEqual(['1', '2', '3']);
+    expect(images.variants.every((item) => item.dataUrl.startsWith('data:image/jpeg;base64,'))).toBe(true);
+    expect(images.contactSheet.dataUrl).toMatch(/^data:image\/png;base64,/);
+    await expect(session.committedOutput(jobId, assetId)).rejects.toThrow('not committed');
+  });
   it('records bounded job IDs atomically and rehydrates actual snapshots after restart', async () => {
     const { root, jobs } = fixture();
     const session = new JobSessionController({ jobs, userDataDirectory: root, developmentFake: true });

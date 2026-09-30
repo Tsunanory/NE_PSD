@@ -28,6 +28,7 @@ export function qualifyInspection(inspection: InspectionReport, proposal: Config
 
 export type VerifiedReviewImages = {
   requestId: string; jobId: string; assetId: string; attempt: 1 | 2;
+  synthetic: boolean;
   variants: Array<{ variantId: '1' | '2' | '3'; sha256: string; dataUrl: string }>;
   contactSheet: { sha256: string; dataUrl: string };
 };
@@ -100,7 +101,7 @@ export async function readReviewImages(root: string, request: VisualReviewReques
   const sheet = checkedManifest.files.find((item) => item.relativePath === checkedRequest.contactSheet.relativePath && item.role === 'imageInput' && item.sha256 === checkedRequest.contactSheet.sha256);
   if (!sheet) throw new Error('contact sheet is not bound to manifest');
   return { requestId: checkedRequest.requestId, jobId: checkedRequest.jobId, assetId: checkedRequest.assetId, attempt: checkedRequest.attempt,
-    variants, contactSheet: { sha256: sheet.sha256, dataUrl: (await imageBytes(root, sheet.relativePath, sheet.sha256, sheet.bytes)).dataUrl } };
+    synthetic: false, variants, contactSheet: { sha256: sheet.sha256, dataUrl: (await imageBytes(root, sheet.relativePath, sheet.sha256, sheet.bytes)).dataUrl } };
 }
 
 export type CommittedOutputRecord = { jobId: string; relativePath: string; sha256: string; bytes: number; state: 'complete' };

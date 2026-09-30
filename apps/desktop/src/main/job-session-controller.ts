@@ -73,7 +73,7 @@ export class JobSessionController {
     const request = VisualReviewRequestSchema.parse(raw);
     if (request.jobId !== jobId || request.assetId !== assetId) throw new Error('review request ID mismatch');
     const { root, manifest } = await adapter.reviewImages(request);
-    return verifyReviewImages(root, request, manifest);
+    return { ...await verifyReviewImages(root, request, manifest), synthetic: this.options.developmentFake };
   }
 
   async committedOutput(jobId: string, assetId: string): Promise<string> {
