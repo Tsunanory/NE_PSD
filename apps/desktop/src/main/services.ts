@@ -41,6 +41,10 @@ export type DesktopServices = {
   evidenceAdapter?: JobEvidenceAdapter;
   detailAdapter?: JobDetailAdapter;
 };
+export function resolveDesktopLaunch(mode: 'development' | 'production', isPackaged: boolean, requestedFake: boolean) {
+  return { mode: isPackaged ? 'production' as const : mode,
+    fake: !isPackaged && mode === 'development' && requestedFake };
+}
 export function composeServices(mode: 'development' | 'production', injected?: DesktopServices, explicitFake = false): DesktopServices {
   if (injected) return injected;
   if (mode === 'development' && explicitFake) {

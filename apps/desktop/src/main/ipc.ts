@@ -64,7 +64,11 @@ export function registerIpc(
   register('job.resume', ({ jobId }: { jobId: string }) => services.jobs.resume(jobId));
   register('job.cancel', ({ jobId }: { jobId: string }) => services.jobs.cancel(jobId));
   register('job.snapshot', ({ jobId }: { jobId: string }) => services.jobs.snapshot(jobId));
-  register('job.retryFailed', ({ jobId }: { jobId: string }) => services.jobs.retryFailed(jobId));
+  register('job.retryFailed', async ({ jobId }: { jobId: string }) => {
+    const successor = await services.jobs.retryFailed(jobId);
+    await sessions?.recordStarted(successor.jobId);
+    return successor;
+  });
   register('job.visualReview', ({ jobId, assetId }: { jobId: string; assetId: string }) => services.jobs.visualReview(jobId, assetId));
   register('job.reviewImages', ({ jobId, assetId }: { jobId: string; assetId: string }) => {
     if (!sessions) throw new Error('job session unavailable');

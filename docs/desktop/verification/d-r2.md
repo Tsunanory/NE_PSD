@@ -4,7 +4,7 @@ The native setup controller now owns source selection, streamed hashes, template
 
 Model qualification is bound to the exact catalog profile digest. A fresh service result is merged into main-owned catalog capacity/provenance evidence; failed or stale qualification blocks job start. A qualified text-only planner may pair with an independently qualified vision reviewer. Three preview IDs, profile digest, content digests, actual JPEG/PNG decoding, production output dimensions, and the synthetic/production boundary are checked before operator confirmation.
 
-Local verification with pinned Node 22.23.2: desktop Vitest 19 files, 104 tests passed; desktop typecheck and build passed. Focused setup/model tests passed after the final preview-dimension regression. GUI endurance result is recorded separately by R5. These are fake-backed and macOS build checks, not live Windows, Photoshop, exact Qwen artifact/runtime, or signing qualification.
+Local verification with pinned Node 22.23.2: desktop Vitest 21 files, 114 tests passed before the packaged-fake routing correction; desktop typecheck and build passed. Focused setup/model tests passed after the final preview-dimension regression. GUI endurance result is recorded separately by R5. These are fake-backed and macOS build checks, not live Windows, Photoshop, exact Qwen artifact/runtime, or signing qualification.
 
 A integration dependencies:
 

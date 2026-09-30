@@ -10,5 +10,5 @@ export const desktopApi = createBridgeApi({
     ipcRenderer.on('desktop:event', handler);
     return () => ipcRenderer.removeListener('desktop:event', handler);
   },
-}, process.env.NODE_ENV === 'development' && process.env.NE_PSD_DEV_FAKE === '1');
+}, process.env.NODE_ENV === 'development' && process.env.NE_PSD_DEV_FAKE === '1' && process.argv.includes('--ne-psd-dev-fake=1'));
 contextBridge.exposeInMainWorld('desktop', desktopApi);

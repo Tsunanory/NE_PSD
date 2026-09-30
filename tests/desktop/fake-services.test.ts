@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { FakeSetupService } from '../../apps/desktop/src/main/services.js';
+import { FakeSetupService, resolveDesktopLaunch } from '../../apps/desktop/src/main/services.js';
 import { FakeJobService, createFakeCorpusSpec } from '../../apps/desktop/src/main/fake-job-service.js';
 import { loadFixture } from '@ne-psd/contracts/testing';
 import type { JobSpec } from '@ne-psd/contracts';
 
 describe('desktop independent fakes', () => {
+  it('never selects development fakes for a packaged launch, regardless of environment', () => {
+    expect(resolveDesktopLaunch('development', true, true)).toEqual({ mode: 'production', fake: false });
+    expect(resolveDesktopLaunch('development', false, true)).toEqual({ mode: 'development', fake: true });
+    expect(resolveDesktopLaunch('production', false, true)).toEqual({ mode: 'production', fake: false });
+  });
   it('returns contract-shaped frozen snapshots and sequence-numbered events', async () => {
     const spec = loadFixture<JobSpec>('job.interactive.json');
     const service = new FakeJobService();
