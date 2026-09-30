@@ -1,0 +1,36 @@
+name: Fake and contract CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      NPM_CONFIG_AUDIT: 'false'
+      NPM_CONFIG_FUND: 'false'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.23.2
+          cache: npm
+      - name: Verify locked toolchain
+        run: node -e "const {execSync}=require('node:child_process'); if (process.versions.node !== '22.23.2' || execSync('npm --version',{encoding:'utf8'}).trim() !== '10.9.8') process.exit(1)"
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check
+      - run: npm run test:contracts
+      - run: npm run test:core
+      - run: npm run test:photoshop
+      - run: npm run test:intelligence
+      - run: npm run test:desktop
+      - run: npm run test:integration

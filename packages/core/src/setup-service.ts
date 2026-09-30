@@ -23,7 +23,7 @@ import type { JobRepository } from './job-repository.js';
 import { QualificationStore, verifiedFileInRoot } from './qualification-store.js';
 
 export type SetupServiceDependencies = {
-  backend: PhotoshopBackend;
+  backend: Pick<PhotoshopBackend, 'capabilities' | 'inspect' | 'qualify'>;
   intelligence: IntelligenceService;
   repository: Pick<JobRepository, 'recordQualification'>;
   qualificationRoot: string;
