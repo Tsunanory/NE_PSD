@@ -1,5 +1,6 @@
 import type { CallRecord, DocumentState, FaultRecord, LayerState, MutationRecord, OperationKind } from '../../packages/photoshop/src/types.js';
 import type { FakeScene } from './fixtures/scenes.js';
+import type { Rect } from '@ne-psd/contracts';
 
 function copyLayer(layer: LayerState, id: string, parentId: string | null): LayerState {
   return { ...layer, id, parentId, bounds: layer.bounds === null ? null : { ...layer.bounds }, children: [] };
@@ -50,6 +51,14 @@ export class FakeSession {
   private readonly pending: Array<() => void> = [];
   completePending(): void { const pending = this.pending.splice(0); for (const resolve of pending) resolve(); }
   readScene(): FakeScene { return snapshotScene(this.scene); }
+  setLayerBounds(layerId: string, bounds: Rect): void {
+    const layer = this.scene.layers.find((candidate) => candidate.id === layerId);
+    if (!layer) throw new Error(`unknown layer: ${layerId}`);
+    layer.bounds = { ...bounds };
+  }
+  setVisibleVariant(variantId: '1' | '2' | '3'): void {
+    for (const layer of this.scene.layers) if (/^[123] картинка$/.test(layer.name)) layer.visible = layer.name.startsWith(variantId);
+  }
 
   async openFreshCopy(_attemptId: string): Promise<{ rootId: string }> {
     this.scene = copyScene(this.scene, ++this.serial);

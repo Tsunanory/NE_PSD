@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPinnedLaunchParameters, McpClient } from '../../packages/photoshop/src/mcp-client.js';
 import { OperationJournal, runUncertainOperation } from '../../packages/photoshop/src/recovery.js';
 import { exportVariants, type ExportAdapter } from '../../packages/photoshop/src/export.js';
-import { placeAndFit, type PlacementAdapter, type TranslationCommand } from '../../packages/photoshop/src/placement.js';
+import { placeAndFit, type PlacementAdapter, type PlacementResult, type TranslationCommand } from '../../packages/photoshop/src/placement.js';
 import { ensureClipping, propagateSentinelByIdentity } from '../../packages/photoshop/src/qualification.js';
 import { resolveLayer, structuralFingerprint } from '../../packages/photoshop/src/selectors.js';
 import { createWorkingCopy, sha256 } from '../../packages/photoshop/src/working-copy.js';
@@ -28,19 +28,59 @@ function reference(row: Row): Rect {
   return { left: 100, top: 200, right: 100 + size.width, bottom: 200 + size.height };
 }
 
-function exporter(format: Row['format'], counters: { active: number; maximum: number }, faulty?: 'corrupt' | 'wrongColor'): ExportAdapter {
+async function assertConnected(row: Row, connection?: ConnectedScene): Promise<void> {
+  if (!connection || !connection.session || !connection.placement || !connection.features) throw new Error('scene is not ready for export');
+  const scene = connection.session.readScene();
+  if (scene.placed.contentKey !== connection.input || JSON.stringify(scene.placed.bounds) !== JSON.stringify(connection.placement.finalPlaced) || !connection.placement.checks.every((check) => check.passed)) throw new Error('scene is not ready for export');
+  if (row.flags.includes('vectorMaskHole') && connection.features.vectorHole !== true) throw new Error('scene is not ready for export');
+  if (row.flags.includes('transparentInput') && connection.features.transparent !== true) throw new Error('scene is not ready for export');
+  if (row.flags.some((flag) => ['sharedObject', 'independentObjects', 'sharedAndIndependent'].includes(flag))) {
+    const groups = connection.features.identities;
+    if (!groups || Object.values(groups).flat().length !== 3 || connection.features.writes?.length !== Object.keys(groups).length) throw new Error('scene is not ready for export');
+  }
+  if (row.flags.includes('linkedDependencies')) {
+    const linked = connection.features.linked;
+    if (!linked || (await readFile(linked.parentCopy, 'utf8')) !== `link:${linked.dependencyCopy}` || (await sha256(linked.dependencyCopy)) !== linked.digest) throw new Error('scene is not ready for export');
+  }
+}
+
+async function connectedPixels(row: Row, connection: ConnectedScene, variantId: '1' | '2' | '3'): Promise<Uint8Array> {
+  await assertConnected(row, connection);
+  const scene = connection.session.readScene();
+  const visible = scene.layers.filter((layer) => /^[123] картинка$/.test(layer.name) && layer.visible);
+  if (visible.length !== 1 || visible[0]!.name !== `${variantId} картинка`) throw new Error('scene is not ready for export');
+  const identity = Object.entries(connection.features.identities ?? {}).find(([, targets]) => targets.includes(variantId === '1' ? 'one' : variantId === '2' ? 'two' : 'three'))?.[0] ?? variantId;
+  const color = Buffer.from(digest(`${scene.placed.contentKey}:${connection.features.linked?.digest ?? ''}:${identity}:${variantId}`), 'hex');
+  const pixels = Buffer.alloc(32 * 24 * 4);
+  const ref = reference(row); const placed = scene.placed.bounds!;
+  for (let y = 0; y < 24; y++) for (let x = 0; x < 32; x++) {
+    const index = (y * 32 + x) * 4;
+    const px = ref.left + (x + 0.5) * (ref.right - ref.left) / 32;
+    const py = ref.top + (y + 0.5) * (ref.bottom - ref.top) / 24;
+    const inside = px >= placed.left && px <= placed.right && py >= placed.top && py <= placed.bottom && (row.format === 'png' || (x >= 8 && x < 24 && y >= 6 && y < 18));
+    const hole = connection.features.vectorHole && x >= 12 && x < 20 && y >= 8 && y < 16;
+    pixels[index] = inside && !hole ? color[0]! : 12;
+    pixels[index + 1] = inside && !hole ? color[1]! : 34;
+    pixels[index + 2] = inside && !hole ? color[2]! : 56;
+    pixels[index + 3] = inside && !hole ? connection.features.transparent ? 204 : 255 : row.format === 'png' ? 0 : 255;
+  }
+  return pixels;
+}
+
+function exporter(row: Row, counters: { active: number; maximum: number }, faulty?: 'corrupt' | 'wrongColor', connection?: ConnectedScene): ExportAdapter {
+  const format = row.format;
   let visible: '1' | '2' | '3' = '1';
   const measure = async (action: () => Promise<void>) => { counters.active++; counters.maximum = Math.max(counters.maximum, counters.active); try { await action(); } finally { counters.active--; } };
   return {
     restoreQualifiedState: async () => ({ acknowledged: true }),
     hideVariant: async () => ({ acknowledged: true }),
-    showVariant: async (variantId) => { visible = variantId; return { acknowledged: true }; },
-    readVisibility: async () => ({ acknowledged: true, ancestorVisible: true, visibleVariantIds: [visible] }),
+    showVariant: async (variantId) => { visible = variantId; if (connection) await connection.session.execute('setVisibility', connection.placement.documentId, null, () => connection.session.setVisibleVariant(variantId)); return { acknowledged: true }; },
+    readVisibility: async () => ({ acknowledged: true, ancestorVisible: true, visibleVariantIds: connection ? connection.session.readScene().layers.filter((layer) => /^[123] картинка$/.test(layer.name) && layer.visible).map((layer) => layer.name[0]!) : [visible] }),
     prepareExport: async () => ({ acknowledged: true, disposable: true, documentId: 'export-copy', convertedPixels: true, renderingIntent: 'relative-colorimetric', mode: 'RGB', bitDepth: 8, embeddedProfile: 'sRGB', flattened: format === 'jpeg', alpha: format === 'png' ? 'preserve' : 'opaque' }),
     exportVariant: async ({ variantId, destination }) => {
       await measure(async () => {
         if (faulty === 'corrupt') { await writeFile(destination, 'corrupt input rendered as invalid output'); return; }
-        const image = sharp({ create: { width: 32, height: 24, channels: 4, background: { r: Number(variantId) * 60, g: 120, b: 200, alpha: format === 'png' ? 0.8 : 0 } } });
+        const image = connection ? sharp(await connectedPixels(row, connection, variantId), { raw: { width: 32, height: 24, channels: 4 } }) : sharp({ create: { width: 32, height: 24, channels: 4, background: { r: Number(variantId) * 60, g: 120, b: 200, alpha: format === 'png' ? 0.8 : 0 } } });
         const output = format === 'png' ? image.png() : image.flatten({ background: { r: 12, g: 34, b: 56 } }).jpeg({ quality: 100 });
         if (faulty !== 'wrongColor') output.withMetadata({ icc: 'srgb' });
         await output.toFile(destination);
@@ -51,8 +91,9 @@ function exporter(format: Row['format'], counters: { active: number; maximum: nu
   };
 }
 
-async function exportsFor(row: Row, root: string, counters: { active: number; maximum: number }, faulty?: 'corrupt' | 'wrongColor') {
-  return exportVariants({ bundleRoot: root, approvedBundleRoot: root, output: { format: row.format, quality: 100, colorSpace: 'sRGB', width: 32, height: 24 }, adapter: exporter(row.format, counters, faulty), alphaPolicy: row.format === 'png' ? 'preserve' : 'opaque', ...(row.format === 'jpeg' ? { jpegBackground: { r: 12, g: 34, b: 56 }, qualityEvidence: { unit: '1-100' as const } } : {}), renderingIntent: 'relative-colorimetric' });
+async function exportsFor(row: Row, root: string, counters: { active: number; maximum: number }, faulty?: 'corrupt' | 'wrongColor', connection?: ConnectedScene) {
+  if (!faulty) await assertConnected(row, connection);
+  return exportVariants({ bundleRoot: root, approvedBundleRoot: root, output: { format: row.format, quality: 100, colorSpace: 'sRGB', width: 32, height: 24 }, adapter: exporter(row, counters, faulty, connection), alphaPolicy: row.format === 'png' ? 'preserve' : 'opaque', ...(row.format === 'jpeg' ? { jpegBackground: { r: 12, g: 34, b: 56 }, qualityEvidence: { unit: '1-100' as const } } : {}), renderingIntent: 'relative-colorimetric' });
 }
 
 async function fitted(row: Row, session: FakeSession, invalid?: 'zero' | 'unknown') {
@@ -70,30 +111,44 @@ async function fitted(row: Row, session: FakeSession, invalid?: 'zero' | 'unknow
     readEffectiveBounds: async (identity) => identity.layerId === referenceId ? invalid === 'zero' ? { ...ref, right: ref.left } : invalid === 'unknown' ? null : ref : bounds,
     select: async (identity) => ({ acknowledged: true, ...identity }),
     replaceContents: async (identity, input) => { await session.place(opened.rootId, targetId, input); return { acknowledged: true, ...identity, bounds }; },
-    scale: async (_identity, plan) => { await session.execute('scale', opened.rootId, targetId, () => { const width = (bounds.right - bounds.left) * plan.percentX / 100; const height = (bounds.bottom - bounds.top) * plan.percentY / 100; const cx = (bounds.left + bounds.right) / 2; const cy = (bounds.top + bounds.bottom) / 2; bounds = { left: cx - width / 2, top: cy - height / 2, right: cx + width / 2, bottom: cy + height / 2 }; }); return { acknowledged: true }; },
-    translate: async (_identity, command: TranslationCommand) => { await session.execute('translate', opened.rootId, targetId, () => { const center = command.payload as { x: number; y: number }; const dx = center.x - (bounds.left + bounds.right) / 2; const dy = center.y - (bounds.top + bounds.bottom) / 2; bounds = { left: bounds.left + dx, top: bounds.top + dy, right: bounds.right + dx, bottom: bounds.bottom + dy }; }); return { acknowledged: true }; },
+    scale: async (_identity, plan) => { await session.execute('scale', opened.rootId, targetId, () => { const width = (bounds.right - bounds.left) * plan.percentX / 100; const height = (bounds.bottom - bounds.top) * plan.percentY / 100; const cx = (bounds.left + bounds.right) / 2; const cy = (bounds.top + bounds.bottom) / 2; bounds = { left: cx - width / 2, top: cy - height / 2, right: cx + width / 2, bottom: cy + height / 2 }; session.setLayerBounds(targetId, bounds); }); return { acknowledged: true }; },
+    translate: async (_identity, command: TranslationCommand) => { await session.execute('translate', opened.rootId, targetId, () => { const center = command.payload as { x: number; y: number }; const dx = center.x - (bounds.left + bounds.right) / 2; const dy = center.y - (bounds.top + bounds.bottom) / 2; bounds = { left: bounds.left + dx, top: bounds.top + dy, right: bounds.right + dx, bottom: bounds.bottom + dy }; session.setLayerBounds(targetId, bounds); }); return { acknowledged: true }; },
   };
   const input = `/approved/${row.assetId}.png`;
   return placeAndFit({ adapter, reference: selector('Reference'), target: selector('Placed'), input, approvedInputs: [input], sourceMetadata: row.source, fitMode: row.fitMode });
 }
 
-async function linkedClosure(row: Row): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), `b14-link-${row.assetId}-`));
+async function linkedClosure(row: Row, skipMutation = false): Promise<{ parentCopy: string; dependencyCopy: string; digest: string }> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), `b14-link-${row.assetId}-`)));
   const master = join(root, 'master.psd'); const dependency = join(root, 'зависимость.psb');
-  await writeFile(master, 'master-original'); await writeFile(dependency, 'dependency-original');
+  await writeFile(master, `link:${dependency}`); await writeFile(dependency, 'dependency-original');
   const masterHash = await sha256(master); const dependencyHash = await sha256(dependency);
   const result = await createWorkingCopy({ masterPath: master, trustedRoot: root, attemptRoot: join(root, 'attempt'), expectedHashes: { [master]: masterHash, [dependency]: dependencyHash }, operation: {
-    readLinks: async (path) => path === master ? [{ path: dependency, sourceKind: 'linked' as const, expectedSha256: dependencyHash }] : [],
-    relink: async (parent, originalSource, jobOwnedSource) => { await writeFile(parent, 'job-owned-relinked-parent'); return { acknowledged: true, parentPath: parent, originalSource, jobOwnedSource }; },
+    readLinks: async (path) => {
+      const bytes = await readFile(path, 'utf8');
+      return bytes.startsWith('link:') ? [{ path: bytes.slice(5), sourceKind: 'linked' as const, expectedSha256: dependencyHash }] : [];
+    },
+    relink: async (parent, originalSource, jobOwnedSource) => {
+      if (!skipMutation) await writeFile(parent, `link:${jobOwnedSource}`);
+      return { acknowledged: true, parentPath: parent, originalSource, jobOwnedSource };
+    },
   } });
   expect(result.closure).toHaveLength(2);
   expect(result.closure.every((entry) => entry.copyPath.startsWith(result.attemptRoot))).toBe(true);
   expect(await sha256(master)).toBe(masterHash); expect(await sha256(dependency)).toBe(dependencyHash);
   expect(result.originalHashes.get(await realpath(dependency))).toBe(dependencyHash);
+  const canonicalDependency = await realpath(dependency);
+  const dependencyCopy = result.closure.find((entry) => entry.originalPath === canonicalDependency)!.copyPath;
+  expect(await readFile(result.masterPath, 'utf8')).toBe(`link:${dependencyCopy}`);
+  return { parentCopy: result.masterPath, dependencyCopy, digest: await sha256(dependencyCopy) };
 }
 
-async function featureProof(row: Row, root: string): Promise<void> {
+type FeatureState = { identities?: Record<string, string[]>; writes?: string[]; linked?: { parentCopy: string; dependencyCopy: string; digest: string }; vectorHole?: boolean; transparent?: boolean };
+type ConnectedScene = { session: FakeSession; placement: PlacementResult; features: FeatureState; input: string };
+
+async function featureProof(row: Row, root: string): Promise<FeatureState> {
   const flags = new Set(row.flags);
+  const result: FeatureState = {};
   if (flags.has('sharedObject') || flags.has('independentObjects') || flags.has('sharedAndIndependent')) {
     const ids: Record<string, string> = flags.has('sharedObject') ? { one: 'same', two: 'same', three: 'same' } : flags.has('independentObjects') ? { one: 'one', two: 'two', three: 'three' } : { one: 'same', two: 'same', three: 'other' };
     const written: string[] = [];
@@ -101,8 +156,10 @@ async function featureProof(row: Row, root: string): Promise<void> {
     expect(proof.routes).toEqual(['one', 'two', 'three']);
     expect(written).toEqual([...new Set(Object.values(ids))]);
     expect(proof.writes).toHaveLength(new Set(Object.values(ids)).size);
+    result.identities = proof.equivalentTargets;
+    result.writes = written;
   }
-  if (flags.has('linkedDependencies')) await linkedClosure(row);
+  if (flags.has('linkedDependencies')) result.linked = await linkedClosure(row);
   if (flags.has('duplicateLayerNames')) {
     const document = duplicateSiblingScene();
     const duplicate = document.layers.at(-1)!;
@@ -114,21 +171,64 @@ async function featureProof(row: Row, root: string): Promise<void> {
   }
   if (flags.has('vectorMaskHole')) {
     const relation = { inputId: 'input', referenceId: 'reference', parentId: 'parent', inputIndex: 0, referenceIndex: 1, clipped: true, baseId: 'reference', kind: 'shape' as const, mask: { holes: [[10, 10], [20, 20]] }, effects: { shadow: true }, maskSemantics: 'vector' as const, layerCount: 2 };
-    await expect(ensureClipping({ inspectClipping: async () => relation }, 'input', 'reference')).resolves.toMatchObject({ clipped: true, adjacentToReference: true });
+    const clipping = await ensureClipping({ inspectClipping: async () => relation }, 'input', 'reference');
+    expect(clipping).toMatchObject({ clipped: true, adjacentToReference: true });
+    result.vectorHole = clipping.clipped && clipping.adjacentToReference;
   }
   if (flags.has('transparentInput')) {
     const input = join(root, 'transparent-source.png');
     await sharp({ create: { width: 2, height: 2, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 0.5 } } }).png().toFile(input);
     expect((await sharp(input).metadata()).hasAlpha).toBe(true);
+    result.transparent = true;
   }
   if (flags.has('cyrillicFilename')) {
     const input = join(root, 'вход с пробелом.png'); await writeFile(input, 'small-source-name-proof');
     expect(await readFile(input, 'utf8')).toBe('small-source-name-proof');
     expect(row.assetId).not.toBe(basename(input));
   }
+  return result;
 }
 
 describe('B14 executable Photoshop fake corpus', () => {
+  it('rejects export from an unplaced scene rather than painting standalone variant fixtures', async () => {
+    const row = corpus[0]!;
+    const root = await mkdtemp(join(tmpdir(), 'b14-unplaced-'));
+    const session = new FakeSession(sceneFixture());
+    await session.openFreshCopy(row.assetId);
+    await expect((exportsFor as (...args: unknown[]) => Promise<unknown>)(row, root, { active: 0, maximum: 0 }, undefined, session)).rejects.toThrow('scene is not ready for export');
+  });
+
+  it('rejects a relink acknowledgement when the copied parent still points at the original dependency', async () => {
+    const row = corpus.find((item) => item.flags.includes('linkedDependencies'))!;
+    await expect((linkedClosure as (...args: unknown[]) => Promise<unknown>)(row, true)).rejects.toMatchObject({ code: 'LINKED_SOURCE_UNISOLATED' });
+  });
+
+  it('makes export pixels depend on measured placement for the same source', async () => {
+    const row = corpus.find((item) => item.assetId === 'asset-cover-portrait-png')!;
+    const render = async (fitMode: FitMode) => {
+      const current = { ...row, fitMode };
+      const root = await mkdtemp(join(tmpdir(), 'b14-placement-pixels-'));
+      const session = new FakeSession(sceneFixture());
+      const placement = await fitted(current, session);
+      const features = await featureProof(current, root);
+      const result = await exportsFor(current, root, { active: 0, maximum: 0 }, undefined, { session, placement, features, input: `/approved/${row.assetId}.png` });
+      const bytes = await readFile(join(root, result.artifacts[0]!.path));
+      await session.closeOwned();
+      return digest(bytes);
+    };
+    expect(await render('cover')).not.toBe(await render('contain'));
+  });
+
+  it('rejects export when an isolated linked dependency changes after qualification', async () => {
+    const row = corpus.find((item) => item.flags.includes('linkedDependencies'))!;
+    const root = await mkdtemp(join(tmpdir(), 'b14-linked-tamper-'));
+    const session = new FakeSession(sceneFixture());
+    const placement = await fitted(row, session);
+    const features = await featureProof(row, root);
+    await writeFile(features.linked!.dependencyCopy, 'tampered job copy');
+    await expect(exportsFor(row, root, { active: 0, maximum: 0 }, undefined, { session, placement, features, input: `/approved/${row.assetId}.png` })).rejects.toThrow('scene is not ready for export');
+  });
+
   it('has a complete, unique 18-row valid matrix and named fault rows', () => {
     const valid = corpus.filter((row) => !row.flags.some((flag) => faults.has(flag)));
     const knownFlags = new Set(['nonOriginReference', 'transparentInput', 'vectorMaskHole', 'cyrillicFilename', 'spaces', 'sharedObject', 'independentObjects', 'duplicateLayerNames', 'linkedDependencies', 'sharedAndIndependent', 'windowsReservedName', 'caseOnlyCollision', 'handledByCore', 'corruptInput', 'wrongColor', 'schemaDrift', 'zeroEffectiveBounds', 'unknownEffectiveBounds', 'lostReply', 'cancelPlace', 'cancelScale', 'cancelSave', 'cancelExport', 'cancelClose']);
@@ -149,14 +249,19 @@ describe('B14 executable Photoshop fake corpus', () => {
       const placed = await fitted(row, session);
       expect(placed.checks.every((check) => check.passed), row.assetId).toBe(true);
       expect(placed.evidence.some((entry) => entry.operation === 'scale')).toBe(true);
-      await featureProof(row, root);
+      const features = await featureProof(row, root);
       const counters = { active: 0, maximum: 0 };
-      const rendered = await exportsFor(row, root, counters);
+      const rendered = await exportsFor(row, root, counters, undefined, { session, placement: placed, features, input: `/approved/${row.assetId}.png` });
       expect(rendered.artifacts).toHaveLength(3);
       for (const artifact of rendered.artifacts) {
         const bytes = await readFile(join(root, artifact.path));
         expect(digest(bytes)).toBe(artifact.sha256);
         expect((await sharp(bytes).metadata()).format).toBe(row.format === 'jpeg' ? 'jpeg' : 'png');
+        if (row.flags.includes('vectorMaskHole') && row.format === 'png') {
+          const raw = await sharp(bytes).ensureAlpha().raw().toBuffer();
+          expect(raw[(12 * 32 + 16) * 4 + 3]).toBe(0);
+          expect(raw[(12 * 32 + 10) * 4 + 3]).toBe(255);
+        }
         expect(artifact.path).not.toContain(row.assetId);
       }
       artifacts += rendered.artifacts.length;

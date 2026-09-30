@@ -1,0 +1,119 @@
+
+> ne-psd@0.1.0 test:photoshop
+> vitest run --config tests/photoshop/vitest.config.ts tests/photoshop/conformance.test.ts
+
+
+ RUN  v4.1.11 /Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/photoshop
+
+ ❯ tests/photoshop/conformance.test.ts (5 tests | 2 failed) 558ms
+     × rejects export from an unplaced scene rather than painting standalone variant fixtures 51ms
+     × rejects a relink acknowledgement when the copied parent still points at the original dependency 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/photoshop/conformance.test.ts > B14 executable Photoshop fake corpus > rejects export from an unplaced scene rather than painting standalone variant fixtures
+AssertionError: promise resolved "{ artifacts: [ { …(8) }, …(2) ], …(2) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "artifacts": [
++     {
++       "bytes": 963,
++       "colorSpace": "sRGB",
++       "format": "jpeg",
++       "height": 24,
++       "path": "variants/1.jpeg",
++       "sha256": "9e9ae86f686f6b5ef3f59f59cfb615b83ad0175c90bb9e87d1ef4006ce16ac60",
++       "variantId": "1",
++       "width": 32,
++     },
++     {
++       "bytes": 963,
++       "colorSpace": "sRGB",
++       "format": "jpeg",
++       "height": 24,
++       "path": "variants/2.jpeg",
++       "sha256": "9e9ae86f686f6b5ef3f59f59cfb615b83ad0175c90bb9e87d1ef4006ce16ac60",
++       "variantId": "2",
++       "width": 32,
++     },
++     {
++       "bytes": 963,
++       "colorSpace": "sRGB",
++       "format": "jpeg",
++       "height": 24,
++       "path": "variants/3.jpeg",
++       "sha256": "9e9ae86f686f6b5ef3f59f59cfb615b83ad0175c90bb9e87d1ef4006ce16ac60",
++       "variantId": "3",
++       "width": 32,
++     },
++   ],
++   "cleanup": {
++     "acknowledged": true,
++     "documentId": "export-copy",
++   },
++   "visibility": [
++     {
++       "evidencePath": "visibility/1.json",
++       "variantId": "1",
++       "visibleVariantIds": [
++         "1",
++       ],
++     },
++     {
++       "evidencePath": "visibility/2.json",
++       "variantId": "2",
++       "visibleVariantIds": [
++         "2",
++       ],
++     },
++     {
++       "evidencePath": "visibility/3.json",
++       "variantId": "3",
++       "visibleVariantIds": [
++         "3",
++       ],
++     },
++   ],
+  }
+
+ ❯ tests/photoshop/conformance.test.ts:137:132
+    135|     const session = new FakeSession(sceneFixture());
+    136|     await session.openFreshCopy(row.assetId);
+    137|     await expect((exportsFor as (...args: unknown[]) => Promise<unknow…
+       |                                                                                                                                    ^
+    138|   });
+    139|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/photoshop/conformance.test.ts > B14 executable Photoshop fake corpus > rejects a relink acknowledgement when the copied parent still points at the original dependency
+AssertionError: promise resolved "undefined" instead of rejecting
+
+- Expected:
+Error {
+  "message": "rejected promise",
+}
+
++ Received:
+undefined
+
+ ❯ tests/photoshop/conformance.test.ts:142:88
+    140|   it('rejects a relink acknowledgement when the copied parent still po…
+    141|     const row = corpus.find((item) => item.flags.includes('linkedDepen…
+    142|     await expect((linkedClosure as (...args: unknown[]) => Promise<unk…
+       |                                                                                        ^
+    143|   });
+    144|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  19:17:55
+   Duration  1.19s (transform 213ms, setup 0ms, import 507ms, tests 558ms, environment 0ms)
