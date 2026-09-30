@@ -1,5 +1,9 @@
-# Windows acceptance
+# Windows acceptance status
 
-Status: `BLOCKED — Windows host unavailable`.
+**Blocked-external.** No Windows 11 x64 installed build, licensed Photoshop controller, exact qualified Qwen runtime, complete vendor bundle, or signing evidence was available in the macOS development run. The PowerShell acceptance probes and package recipe are implemented but have not executed against an installed application. The runtime manifest is `blocked`; an unsigned internal build, if created later, remains distinct from a signed release.
 
-No Windows 11 x64 host, installed package, Photoshop controller, exact local model, signing certificate or vendor runtime inputs are available in this development environment. The PowerShell acceptance scripts are fail-closed and do not claim macOS or fake evidence as Windows proof.
+The real Windows matrix requires: fresh standard-user installation without global Node/npm; offline operation with observed network behavior; missing/reconnected model and Photoshop; Unicode/space and ≥280 UTF-16-unit paths; filename collisions; permissions/storage; live cover/contain/stretch previews and exports; pause/cancel/retry; crash and review-backlog recovery; a 100-asset representative run; upgrade/uninstall data retention; and installer/EXE signature verification. Each participating layer must work or preflight must name the exact unsupported boundary before mutation. The tests cannot be passed by a macOS fake or a text-only review.
+
+The 100-asset gate specifically needs 300 correct committed outputs and 100 fresh runtime review decisions with 300 individual variant verdicts. Record original PSD and asset SHA-256 before/after, image defects/corrections, blocked/failure counts, elapsed phases, RAM/VRAM, disk usage, and review evidence. None of those live results or metrics exists yet. The observed 10,000-asset fake Electron GUI measurements belong only to local renderer responsiveness.
+
+`packaging/runtime-manifest.json` must move to `ready` only after the exact Windows files, source/redistribution rights, hashes, both native ABIs and all three fit resources are qualified. A then wires verified standalone Node/MCP launch into the real service lifecycle and performs clean installation, native smoke, offline acceptance and recovery tests on Windows. Signing is a separate final gate; a valid signature does not establish SmartScreen reputation.

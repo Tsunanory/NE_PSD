@@ -1,14 +1,17 @@
-# Release gates
+# Desktop and Windows release gates
 
-Blocked gates:
+**Current status: implemented-and-fake-tested locally; blocked-external for production integration and live acceptance. Not release-qualified.** The local macOS Electron tests exercise an explicit synthetic service. They do not qualify Photoshop, the requested Qwen artifact, Windows installation, offline rendering, or signing.
 
-- Windows 11 x64 install/upgrade/uninstall and offline acceptance.
-- Exact bundled Node/MCP/native runtime resources, hashes, architecture and licenses.
-- Photoshop installation/controller and live template qualification.
-- Exact Qwen3.8-27B artifact, runtime, chat template, capability, benchmark and visual-review evidence.
-- Authenticode signature and timestamp evidence.
-- Real Electron/Playwright GUI smoke.
+| Gate | Required evidence | Current result |
+|---|---|---|
+| Production composition | A injects real frozen `JobService`/`SetupService`, verified model catalog, previews, linked-copy handler, review manifest and committed-record adapters; optionally durable detail adapter. Packaged entry uses verified Node/MCP bundle and qualified Photoshop controller. | Blocked-external. `startDesktop` fails closed without injection. Main verifies bundled resources, but A has not supplied the runtime service adapter or its launch/lifecycle. |
+| Root dependency lock | A updates one root `package-lock.json` to include direct desktop `esbuild@0.28.2` and `sharp@0.35.4` while preserving D scripts/deps against A security pins; pinned Node/npm clean install, tests, build and bundle check. | Pending A. Installed-tree checks passed; no clean `npm ci` proof. |
+| Vendor and native bundle | Exact Windows x64 Node/MCP/vendor/native files, hashes, architecture/ABI for Electron and standalone Node, redistribution licenses, all fit resources. | Blocked-external. Runtime manifest intentionally says `blocked`; preparation and verification exit nonzero. |
+| Photoshop and supplied PSD | Licensed controller, original hash, linked dependency isolation, unambiguous selectors, sentinel propagation, geometry and clipping for cover/contain/stretch, three real previews. | Blocked-external. No live Photoshop/template qualification. |
+| Exact local model and reviewer | Real `Qwen3.8-27B` artifact/runtime/chat template/capacity and same-corpus Q4/Q6/Q8 qualification; independently qualified vision reviewer; fresh session and actual three-image visual verdicts for each asset. | Blocked-external. No model artifact or live review. Text-only planner may pair with vision reviewer only after each qualifies. No automatic fallback. |
+| Job persistence and recovery | A transaction record, current manifest and committed-output proof, safe pause/close quiescence, interruption/reconciliation on installed app. Cursor and phase-start data for exact history/time claims. | Local bridge fake-tested; A service persistence, quiescence proof and durable cursor/phase time remain open. Ambiguous state fails closed. |
+| Windows installer and operation | Windows 11 x64 standard-user installed NSIS run with Unicode/long paths, offline behavior, resource checks, pause/retry/crash recovery, upgrade/uninstall. | Blocked-external. No installed Windows package or Windows host result. |
+| Real corpus | 100 representative real assets → 300 committed exports, 100 fresh reviews with 300 per-variant visual verdicts, unchanged original hashes, recorded timing/RAM/VRAM/disk. | Blocked-external. The 10,000-asset GUI test used synthetic data only. No real performance or quality result exists. |
+| Signing | Installer and installed EXE Authenticode chain, expected publisher and timestamp. | Blocked-external. No signing credentials or signed artifact; no SmartScreen reputation claim. |
 
-Implementation gaps before a production claim: native file-picker IPC/cancellation wiring, live model endpoint IPC/profile binding, complete deterministic job event/restart scripts, per-operation response schemas, and full JSON runtime-manifest/hash/architecture validation. These are not disguised as external qualification passes.
-
-Passed development gates are fake/unit behavior only. No SmartScreen reputation claim is made. No scheduler is created; future scheduled work remains explicitly Luna-only with no fallback.
+No scheduler is created in this release. Any future digest or token-intensive scheduled job must pin `gpt-5.6-luna` in task settings and the actual invocation, with no fallback.

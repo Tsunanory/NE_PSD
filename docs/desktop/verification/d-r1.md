@@ -30,4 +30,4 @@ Toolchain: `/Users/tsunanory/Desktop/Engines/NE_PSD/.worktrees/.toolchains/node-
 - Dev tooling: a `dev:fake` script can set `NODE_ENV=development NE_PSD_DEV_FAKE=1`; built-renderer smoke also sets `NE_PSD_DEV_FILE=1`. R5b owns `apps/desktop/package.json` during this continuation.
 - Electron GUI, Photoshop, model and Windows live gates are unresolved. Fake tests do not satisfy them.
 
-Commit: see lane handoff; path-limited R1 commit recorded after verification.
+Implementation commit: `db284ed` (`feat(desktop): enforce service and IPC trust boundary`), based on `aec50c34cac1a998682c857f481b2ff8c22b7bb4`. This record was updated with the resulting SHA afterward.
