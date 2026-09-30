@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -88,5 +88,53 @@ describe('durable desktop job session', () => {
       expect(jobs.pause).not.toHaveBeenCalled();
       expect((await session.recentJobs())[0]?.snapshot.state).toBe(state);
     }
+  });
+  it('atomically persists a trusted retry link and closes only after its successor pauses', async () => {
+    const { root, jobs } = fixture();
+    const states = new Map<string, JobSnapshot>([
+      ['job-old', { ...snapshot('job-old', 'failed'), failed: 1, assets: [{ assetId: 'asset-1', status: 'failed', attempt: 1, error: { code: 'TRANSIENT', category: 'transient', message: 'retryable', retryable: true, evidencePaths: [] } }] }],
+      ['job-next', { ...snapshot('job-next'), assets: [{ assetId: 'asset-1', status: 'queued', attempt: 2, error: null }] }],
+    ]);
+    vi.mocked(jobs.snapshot).mockImplementation(async (id) => states.get(id) ?? Promise.reject(new Error('unknown job')));
+    vi.mocked(jobs.pause).mockImplementation(async (id) => { states.set(id, { ...states.get(id)!, state: 'paused' }); });
+    const session = new JobSessionController({ jobs, userDataDirectory: root, developmentFake: false });
+    await session.recordStarted('job-old');
+    await session.recordRetry('job-old', 'job-next');
+    const saved = JSON.parse(await readFile(join(root, 'recent-jobs.json'), 'utf8'));
+    expect(saved).toMatchObject({ jobIds: ['job-next', 'job-old'], retryLinks: [{ from: 'job-old', to: 'job-next' }] });
+    const restarted = new JobSessionController({ jobs, userDataDirectory: root, developmentFake: false });
+    await expect(restarted.safeClose()).resolves.toBeUndefined();
+    expect(jobs.pause).toHaveBeenCalledExactlyOnceWith('job-next');
+    expect((await restarted.recentJobs()).map((entry) => entry.snapshot.state)).toEqual(['paused', 'failed']);
+  });
+  it('rejects missing, ambiguous, blocked, stale and cyclic retry recovery links', async () => {
+    const { root, jobs } = fixture();
+    const old = { ...snapshot('job-old', 'failed'), failed: 1, assets: [{ assetId: 'asset-1', status: 'failed' as const, attempt: 1, error: { code: 'TRANSIENT', category: 'transient' as const, message: 'retryable', retryable: true, evidencePaths: [] } }] };
+    const next = { ...snapshot('job-next'), assets: [{ assetId: 'asset-1', status: 'queued' as const, attempt: 2, error: null }] };
+    const states = new Map<string, JobSnapshot>([['job-old', old], ['job-next', next]]);
+    vi.mocked(jobs.snapshot).mockImplementation(async (id) => states.get(id) ?? Promise.reject(new Error('unknown job')));
+    const session = new JobSessionController({ jobs, userDataDirectory: root, developmentFake: false });
+    await session.recordStarted('job-old');
+    await expect(session.safeClose()).rejects.toThrow('recovery must be resolved');
+    await expect(session.recordRetry('job-old', 'missing')).rejects.toThrow('unknown job');
+    states.set('job-old', { ...old, assets: [{ ...old.assets[0]!, error: { ...old.assets[0]!.error!, category: 'ambiguousState' } }] });
+    await expect(session.recordRetry('job-old', 'job-next')).rejects.toThrow('not safe');
+    states.set('job-old', old);
+    states.set('job-next', { ...next, state: 'blocked' });
+    await expect(session.recordRetry('job-old', 'job-next')).rejects.toThrow('not safe');
+    states.set('job-next', next);
+    await session.recordRetry('job-old', 'job-next');
+    states.set('job-next', { ...next, state: 'blocked' });
+    await expect(session.safeClose()).rejects.toThrow('recovery must be resolved');
+    states.set('job-next', { ...next, state: 'paused' });
+    await expect(session.safeClose()).resolves.toBeUndefined();
+    states.set('job-next', { ...next, state: 'paused', assets: [{ ...next.assets[0]!, attempt: 1 }] });
+    await expect(session.safeClose()).rejects.toThrow('retry successor is not safely paused');
+    states.set('job-next', { ...next, state: 'paused', assets: [{ ...next.assets[0]!, error: { code: 'AMBIGUOUS', category: 'ambiguousState', message: 'state unknown', retryable: false, evidencePaths: [] } }] });
+    await expect(session.safeClose()).rejects.toThrow('ambiguous job state');
+    states.set('job-next', { ...next, state: 'paused' });
+    await expect(session.recordRetry('job-old', 'job-next')).rejects.toThrow('stale or conflicting');
+    await writeFile(join(root, 'recent-jobs.json'), JSON.stringify({ schemaVersion: 1, jobIds: ['job-next', 'job-old'], retryLinks: [{ from: 'job-old', to: 'job-next' }, { from: 'job-next', to: 'job-old' }] }));
+    await expect(session.safeClose()).rejects.toThrow('cyclic retry recovery link');
   });
 });
