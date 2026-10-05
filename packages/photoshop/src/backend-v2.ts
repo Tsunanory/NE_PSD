@@ -22,6 +22,7 @@ import {
   ASSET_CLOSURE_PROOF_V2_PATH, PREPARED_INPUT_MANIFEST_V2_PATH,
   prepareOwnedInputV2, sourceRootIdentity,
 } from './prepare-v2.js';
+import type { AssetLinkScanner } from './prepare-v2.js';
 
 const sha = (value: Uint8Array | string): string => createHash('sha256').update(value).digest('hex');
 const inside = (root: string, target: string): boolean => {
@@ -181,6 +182,7 @@ async function originalsUnchanged(context: Context): Promise<boolean> {
 export type BackendV2Options = {
   base: Pick<PhotoshopBackendV2, 'capabilities' | 'inspect' | 'qualify'>;
   lock: SessionLock;
+  assetLinks?: AssetLinkScanner;
   templateLinks: QualifiedLinkOperation;
   templateRoot: string;
   templateRootId: string;
@@ -205,7 +207,7 @@ export class PhotoshopBackendV2Adapter implements PhotoshopBackendV2 {
     // PSD/PSB linkage needs an installation-qualified, byte-bound reader. No
     // caller-provided link list is admitted as that capability in this release.
     const unavailable = { readLinks: async (): Promise<never> => { throw new BackendV2Error('LINK_SCAN_UNAVAILABLE', 'qualified PSD/PSB link scan is unavailable'); } };
-    return this.options.lock.runExclusive(request.operationId, () => prepareOwnedInputV2(request, unavailable, signal), signal);
+    return this.options.lock.runExclusive(request.operationId, () => prepareOwnedInputV2(request, this.options.assetLinks ?? unavailable, signal), signal);
   }
 
   async render(value: RenderRequestV2, signal: AbortSignal): Promise<RenderEvidenceV2> {

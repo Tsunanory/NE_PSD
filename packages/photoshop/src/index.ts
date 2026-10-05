@@ -8,6 +8,8 @@ export * from './inspection.js';
 export * from './backend.js';
 export * from './backend-v2.js';
 export * from './recovery.js';
+export type { AssetLinkScan, AssetLinkScanner } from './prepare-v2.js';
+export type { LinkedResource, QualifiedLinkOperation } from './working-copy.js';
 export {
   McpClient,
   McpClientError,
@@ -31,6 +33,8 @@ export {
 export type {
   ProductionPhotoshopRuntime,
   ProductionPhotoshopRuntimeOptions,
+  ProductionPhotoshopComposition,
+  ProductionPhotoshopCompositionFactory,
   ProductionRuntimeErrorCode,
 } from './production.js';
 
