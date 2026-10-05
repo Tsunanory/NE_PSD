@@ -74,6 +74,30 @@ describe('restart model-profile restoration', () => {
     }
   });
 
+  it('rejects valid-looking forged profile, qualification, report and V2 digests', async () => {
+    const { fixture, qualification, verification } = await setup();
+    try {
+      const seal = await createModelProfileRestorationSeal(fixture.profile, qualification, async () => verification);
+      const registry = new ModelProfileRegistry();
+      for (const field of ['profileSha256', 'qualificationSha256', 'reportSha256', 'v2ReleaseGateSha256'] as const) {
+        const forged = { ...seal, [field]: 'f'.repeat(64) };
+        await expect(registry.restore(fixture.profile, qualification, forged)).rejects.toThrow(/seal|admission/i);
+      }
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it('rejects stale persisted evidence through the verifier authority', async () => {
+    const { fixture, qualification } = await setup();
+    try {
+      const registry = new ModelProfileRegistry();
+      await expect(registry.restore(fixture.profile, qualification, async () => null)).rejects.toThrow(/verification/i);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it('does not let a verifier rewrite the candidate digest binding', async () => {
     const { fixture, qualification, verification } = await setup();
     try {
