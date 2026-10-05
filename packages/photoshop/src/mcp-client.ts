@@ -56,6 +56,7 @@ export class McpClient {
     canonicalTrace?: CanonicalTraceWriter;
     timeouts?: Partial<Record<string, number>>;
   }) { this.journal = options.journal ?? new OperationJournal(); }
+  get listedTools(): readonly ToolDefinition[] { return this.schema?.tools.map((tool) => ({ ...tool })) ?? []; }
   private readonly journals = new Map<string, OperationJournal>();
   private journalForCall(): OperationJournal {
     if (this.options.journal) return this.options.journal;

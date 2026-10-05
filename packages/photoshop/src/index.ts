@@ -8,6 +8,31 @@ export * from './inspection.js';
 export * from './backend.js';
 export * from './backend-v2.js';
 export * from './recovery.js';
+export {
+  McpClient,
+  McpClientError,
+  buildPinnedLaunchParameters,
+  createPinnedSdkTransport,
+} from './mcp-client.js';
+export type { PinnedLaunchParameters, ToolCall, ToolTransport } from './mcp-client.js';
+export { buildToolMap, toolSchemaDigest } from './tool-map.js';
+export type {
+  JsonSchema,
+  QualifiedToolBinding,
+  SemanticOperation,
+  ToolDefinition,
+  ToolMapEntry,
+  ToolSemantics,
+} from './tool-map.js';
+export {
+  createProductionPhotoshopRuntime,
+  ProductionRuntimeError,
+} from './production.js';
+export type {
+  ProductionPhotoshopRuntime,
+  ProductionPhotoshopRuntimeOptions,
+  ProductionRuntimeErrorCode,
+} from './production.js';
 
 export function parseRequest(input: unknown): RenderRequest {
   const request = RenderRequestSchema.parse(input);
